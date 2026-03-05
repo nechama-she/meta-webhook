@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  CommentsWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: comments_webhook
+      CodeUri: .
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
+          OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
+          COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
+          APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
+          ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
