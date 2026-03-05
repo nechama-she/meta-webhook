@@ -24,4 +24,6 @@ phases:
 
 artifacts:
   files:
+    - template.yaml
     - '**/*'
+  name: BuildArtifact
