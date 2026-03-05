@@ -1,0 +1,27 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - pip install -r requirements-dev.txt
+
+  pre_build:
+    commands:
+      - echo "Running unit tests..."
+      - python -m pytest tests/ -v
+
+  build:
+    commands:
+      - echo "Building with SAM..."
+      - sam build
+
+  post_build:
+    commands:
+      - echo "Deploying with SAM..."
+      - sam deploy --no-confirm-changeset
+
+artifacts:
+  files:
+    - '**/*'
