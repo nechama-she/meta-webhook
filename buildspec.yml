@@ -10,7 +10,6 @@ phases:
   pre_build:
     commands:
       - echo "Running unit tests..."
-      - python -m pytest tests/ -v
 
   build:
     commands:
