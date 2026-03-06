@@ -20,8 +20,16 @@ phases:
 
   post_build:
     commands:
-      - echo "Deploying with SAM..."
-      - sam deploy --no-confirm-changeset
+      - |
+        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ]; then
+          echo "Deploying to PRODUCTION"
+          sam deploy --config-env prod --no-confirm-changeset
+        elif [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/dev" ]; then
+          echo "DEV branch - tests passed, skipping deployment"
+        else
+          echo "Branch not configured"
+          exit 1
+        fi
 
 artifacts:
   files:
