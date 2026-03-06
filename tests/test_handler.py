@@ -13,7 +13,7 @@ from unittest.mock import patch
 def test_webhook_verification():
     """Test GET request for webhook verification"""
     from meta_webhook.handler import lambda_handler
-    
+     
     event = {
         "requestContext": {
             "http": {
