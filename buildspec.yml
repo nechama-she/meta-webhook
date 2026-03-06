@@ -17,12 +17,20 @@ phases:
     commands:
       - echo "Building with SAM..."
       - sam build
-
+      
   post_build:
     commands:
-      - echo "Deploying with SAM..."
-      - sam deploy --no-confirm-changeset
-
+      - echo "Branch name is $BRANCH_NAME"
+      - |
+        if [ "$BRANCH_NAME" = "main" ]; then
+          echo "Deploying to PRODUCTION"
+          sam deploy --config-env prod --no-confirm-changeset
+        elif [ "$BRANCH_NAME" = "dev" ]; then
+          echo "DEV branch - tests passed, skipping deployment"
+        else
+          echo "Branch: $BRANCH_NAME - skipping deployment"
+        fi
+        
 artifacts:
   files:
     - template.yaml

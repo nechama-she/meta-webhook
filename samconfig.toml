@@ -1,8 +1,17 @@
 version = 0.1
 
-[default.deploy.parameters]
+[dev.deploy.parameters]
+stack_name = "meta-webhook-dev"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+parameter_overrides = "Environment=dev"
+
+[prod.deploy.parameters]
 stack_name = "meta-webhook-stack"
 region = "us-east-1"
 confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
+parameter_overrides = "Environment=prod"
