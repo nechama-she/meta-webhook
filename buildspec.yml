@@ -17,9 +17,11 @@ phases:
     commands:
       - echo "Building with SAM..."
       - sam build
-
+      
   post_build:
     commands:
+      - echo "Branch ref is $CODEBUILD_WEBHOOK_HEAD_REF"
+      - echo "Source version is $CODEBUILD_SOURCE_VERSION"
       - |
         if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ]; then
           echo "Deploying to PRODUCTION"
@@ -27,10 +29,10 @@ phases:
         elif [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/dev" ]; then
           echo "DEV branch - tests passed, skipping deployment"
         else
-          echo "Branch not configured"
-          exit 1
+          echo "Branch: $CODEBUILD_WEBHOOK_HEAD_REF"
+          echo "Unknown branch - skipping deployment"
         fi
-
+        
 artifacts:
   files:
     - template.yaml
