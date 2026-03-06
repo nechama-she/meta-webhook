@@ -15,3 +15,6 @@ Resources:
         - AWSLambdaBasicExecutionRole
       FunctionUrlConfig:
         AuthType: NONE
+      Environment:
+        Variables:
+          APP_ID: '{{resolve:ssm:/meta-webhook/APP_ID}}'
