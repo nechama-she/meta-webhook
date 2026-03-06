@@ -11,4 +11,7 @@ Resources:
       Runtime: python3.12
       Timeout: 30
       MemorySize: 256
-        
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      FunctionUrlConfig:
+        AuthType: NONE
