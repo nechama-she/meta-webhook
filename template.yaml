@@ -13,6 +13,8 @@ Resources:
       MemorySize: 256
       Policies:
         - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: '*'
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
