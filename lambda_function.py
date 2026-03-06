@@ -233,16 +233,16 @@ def summarize_and_save(conversation, user_id, page_id):
         print("Summarization error:", repr(e))
 
 
-def save_event_to_db(event_body: dict, table_name: str = "fb_events"):
+def save_event_to_db(event_body: dict, table_name: str = "fb_events", primary_key: str = "event_id"):
     """Save event to specified DynamoDB table."""
     db_table = dynamo.Table(table_name)
+    
+    # Add primary key if not present
+    if primary_key not in event_body:
+        event_body[primary_key] = str(uuid.uuid4())
+    
     try:
-        db_table.put_item(
-            Item={
-                "event_id": str(uuid.uuid4()),
-                "body": json.dumps(event_body),
-            }
-        )
+        db_table.put_item(Item=event_body)
         print(f"Event saved to DynamoDB table {table_name}")
     except Exception as e:
         print(f"DynamoDB error saving to {table_name}:", repr(e))
@@ -352,7 +352,7 @@ def lambda_handler(event, context):
                                         "page_id": page_id,
                                         "lead_data": lead_data,
                                         "raw_value": lead_value
-                                    }, table_name="leads")
+                                    }, table_name="leads", primary_key="leadgen_id")
                                     print("Lead saved to leads table")
                             except Exception as e:
                                 print(f"Error fetching lead details: {repr(e)}")
