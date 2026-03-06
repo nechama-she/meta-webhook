@@ -20,17 +20,15 @@ phases:
       
   post_build:
     commands:
-      - echo "Branch ref is $CODEBUILD_WEBHOOK_HEAD_REF"
-      - echo "Source version is $CODEBUILD_SOURCE_VERSION"
+      - echo "Branch name is $BRANCH_NAME"
       - |
-        if [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/main" ]; then
+        if [ "$BRANCH_NAME" = "main" ]; then
           echo "Deploying to PRODUCTION"
           sam deploy --config-env prod --no-confirm-changeset
-        elif [ "$CODEBUILD_WEBHOOK_HEAD_REF" = "refs/heads/dev" ]; then
+        elif [ "$BRANCH_NAME" = "dev" ]; then
           echo "DEV branch - tests passed, skipping deployment"
         else
-          echo "Branch: $CODEBUILD_WEBHOOK_HEAD_REF"
-          echo "Unknown branch - skipping deployment"
+          echo "Branch: $BRANCH_NAME - skipping deployment"
         fi
         
 artifacts:
