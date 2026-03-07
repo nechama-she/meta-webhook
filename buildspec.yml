@@ -24,7 +24,7 @@ phases:
       - |
         if [ "$BRANCH_NAME" = "main" ]; then
           echo "Deploying to PRODUCTION"
-          sam deploy --config-env prod --no-confirm-changeset
+          sam deploy --config-env prod --no-confirm-changeset --no-fail-on-empty-changeset
         elif [ "$BRANCH_NAME" = "dev" ]; then
           echo "DEV branch - tests passed, skipping deployment"
         else
