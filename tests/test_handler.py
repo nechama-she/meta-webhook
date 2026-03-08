@@ -177,13 +177,42 @@ class TestLeadService:
             yield
 
     @patch("meta_webhook.services.lead_service.save_event")
-    @patch("meta_webhook.services.lead_service.fetch_lead_details", return_value={"id": "L1", "fields": []})
+    @patch("meta_webhook.services.lead_service.fetch_lead_details", return_value={
+        "id": "L1",
+        "created_time": "2026-03-08T04:10:08+0000",
+        "field_data": [
+            {"name": "full_name", "values": ["John Doe"]},
+            {"name": "phone_number", "values": ["+15551234567"]},
+            {"name": "email", "values": ["john@example.com"]},
+            {"name": "move_size", "values": ["2_bedrooms"]},
+            {"name": "pickup_zip", "values": ["20001"]},
+            {"name": "delivery_zip", "values": ["10001"]},
+        ],
+    })
     def test_lead_fetched_and_saved(self, mock_fetch, mock_save):
         from meta_webhook.services.lead_service import process_leadgen
-        process_leadgen({"id": "p1"}, {"leadgen_id": "L1", "page_id": "p1"})
+        process_leadgen(
+            {"id": "p1"},
+            {"leadgen_id": "L1", "page_id": "p1", "ad_id": "A1", "form_id": "F1"},
+        )
         mock_fetch.assert_called_once_with("L1", "p1")
         mock_save.assert_called_once()
-        assert mock_save.call_args[0][0]["leadgen_id"] == "L1"
+
+        saved = mock_save.call_args[0][0]
+        # Core identifiers
+        assert saved["leadgen_id"] == "L1"
+        assert saved["entry_id"] == "p1"
+        assert saved["page_id"] == "p1"
+        assert saved["ad_id"] == "A1"
+        assert saved["form_id"] == "F1"
+        assert saved["created_time"] == "2026-03-08T04:10:08+0000"
+        # Flattened field_data
+        assert saved["full_name"] == "John Doe"
+        assert saved["phone_number"] == "+15551234567"
+        assert saved["email"] == "john@example.com"
+        assert saved["move_size"] == "2_bedrooms"
+        assert saved["pickup_zip"] == "20001"
+        assert saved["delivery_zip"] == "10001"
 
     @patch("meta_webhook.services.lead_service.fetch_lead_details")
     def test_missing_leadgen_id_skipped(self, mock_fetch):
