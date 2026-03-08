@@ -72,11 +72,13 @@ def summarize(conversation: list[dict], user_id: str, page_id: str) -> list[dict
     fresh summary, or the existing conversation (from summary onward).
     """
     summary_item, summary_idx = _find_summary(conversation)
+    print(f"Summarize: total={len(conversation)}, existing_summary={'yes (idx=' + str(summary_idx) + ')' if summary_idx is not None else 'no'}")
 
     if summary_idx is not None:
         new_msgs = conversation[summary_idx + 1:]
     else:
         new_msgs = conversation
+    print(f"Summarize: {len(new_msgs)} new messages since last summary")
 
     # Build the API messages from existing conversation
     start = 0 if summary_idx is None else summary_idx
@@ -86,9 +88,11 @@ def summarize(conversation: list[dict], user_id: str, page_id: str) -> list[dict
     ]
 
     if len(new_msgs) % _SUMMARISE_EVERY_N != 0:
+        print(f"Summarize: not at threshold ({len(new_msgs)} % {_SUMMARISE_EVERY_N} = {len(new_msgs) % _SUMMARISE_EVERY_N}), returning {len(messages_for_api)} messages as-is")
         return messages_for_api
 
     # Build text to summarise
+    print(f"Summarize: threshold reached, generating summary...")
     parts: list[str] = []
     if summary_item:
         parts.append(f"Previous summary:\n{summary_item['text']}\n")
@@ -97,6 +101,7 @@ def summarize(conversation: list[dict], user_id: str, page_id: str) -> list[dict
 
     summary_text = summarize_conversation(text_to_summarise)
     if not summary_text:
+        print("Summarize: OpenAI summarization failed, returning conversation as-is")
         return messages_for_api
 
     new_summary = {
@@ -111,4 +116,5 @@ def summarize(conversation: list[dict], user_id: str, page_id: str) -> list[dict
     replace_summary(user_id, new_summary, summary_item)
 
     # Fresh summary covers everything
+    print(f"Summarize: new summary saved ({len(summary_text)} chars), returning summary-only")
     return [{"role": "system", "content": summary_text}]

@@ -23,6 +23,7 @@ def chat_completion(
         "messages": messages,
         "max_tokens": max_tokens,
     }
+    print(f"OpenAI request: model={OPENAI_MODEL}, max_tokens={max_tokens}, messages={len(messages)}")
     req = urllib.request.Request(
         OPENAI_URL,
         data=json.dumps(payload).encode("utf-8"),
@@ -32,7 +33,10 @@ def chat_completion(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            return (data["choices"][0]["message"]["content"] or "").strip()
+            result = (data["choices"][0]["message"]["content"] or "").strip()
+            usage = data.get("usage", {})
+            print(f"OpenAI response: {result!r} (tokens: prompt={usage.get('prompt_tokens', '?')}, completion={usage.get('completion_tokens', '?')})")
+            return result
     except urllib.error.HTTPError as exc:
         print("OpenAI HTTPError:", exc.code, exc.read().decode("utf-8", "ignore"))
     except Exception as exc:
@@ -45,6 +49,7 @@ def classify_sentiment(text: str) -> str:
 
     Falls back to ``'Good'`` when the API is unreachable.
     """
+    print(f"Classifying sentiment for: {text!r}")
     system_prompt = (
         "Classify the following text as 'Bad' if it expresses any negative "
         "sentiment, complaint, or dissatisfaction. Classify as 'Good' if it "
@@ -68,6 +73,7 @@ def summarize_conversation(text: str) -> str | None:
 
     Returns the summary string or ``None`` on failure.
     """
+    print(f"Summarizing conversation ({len(text)} chars)")
     return chat_completion(
         [
             {
@@ -87,4 +93,5 @@ def summarize_conversation(text: str) -> str | None:
 
 def generate_reply(messages: list[dict]) -> str | None:
     """Generate a conversational reply given prior *messages*."""
+    print(f"Generating reply from {len(messages)} messages")
     return chat_completion(messages, max_tokens=200, timeout=15)

@@ -12,17 +12,23 @@ def process_comment(entry: dict, change_value: dict) -> None:
     user_id = change_value.get("from", {}).get("id")
     page_id = entry.get("id")
 
+    print(f"\n══ Comment: comment_id={comment_id}, user={user_id}, page={page_id} ══")
+
     if not comment_text or not comment_id:
+        print("Comment skipped: empty text or missing comment_id")
         return
 
     result = classify_sentiment(comment_text)
-    print(f"Comment: {comment_text}")
-    print(f"Classifier: {result}")
+    print(f"Comment text: {comment_text!r}")
+    print(f"Sentiment: {result}")
 
     if result == "Bad":
+        print(f"Bad comment → deleting, blocking user={user_id}")
         delete_comment(comment_id, page_id)
         if user_id:
             block_user(user_id, page_id)
+        else:
+            print("No user_id, skipping block")
         save_event(
             {
                 "entry_id": page_id,
@@ -33,3 +39,5 @@ def process_comment(entry: dict, change_value: dict) -> None:
                 "raw_value": change_value,
             }
         )
+    else:
+        print("Good comment — no action taken")
