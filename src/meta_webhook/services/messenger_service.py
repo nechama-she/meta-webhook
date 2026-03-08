@@ -65,14 +65,19 @@ def handle_echo(messaging: dict, entry: dict) -> None:
     text = (message_data.get("text") or "").strip()
     mid = message_data.get("mid")
     if not text or not mid:
+        print("Echo skipped: empty text or missing mid")
         return
 
+    recipient = messaging["recipient"]["id"]
+    page_id = entry.get("id")
+    print(f"Echo from page {page_id} to user {recipient}: {text!r}")
+
     save_message(
-        user_id=messaging["recipient"]["id"],
+        user_id=recipient,
         message_id=mid,
         text=text,
         platform="messenger",
-        page_id=entry.get("id"),
+        page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="sales",
     )
@@ -86,11 +91,15 @@ def handle_user_message(messaging: dict, entry: dict) -> None:
     mid = message_data.get("mid")
 
     if not text or not mid:
+        print(f"User message skipped: empty text or missing mid (sender={sender_id})")
         return
 
     page_id = entry.get("id")
+    print(f"\n══ User message from {sender_id} (page {page_id}) ══")
+    print(f"Text: {text!r}")
 
     # 1. Persist the user message
+    print("Step 1: Saving user message...")
     save_message(
         user_id=sender_id,
         message_id=mid,
@@ -102,16 +111,20 @@ def handle_user_message(messaging: dict, entry: dict) -> None:
     )
 
     # 2. Load & log full conversation
+    print("Step 2: Fetching conversation history...")
     conversation = fetch_conversation(sender_id)
     log_conversation(conversation)
 
     # 3. Summarise if threshold reached, and get messages ready for API
+    print(f"Step 3: Summarize check ({len(conversation)} messages)...")
     messages_for_api = summarize(conversation, sender_id, page_id)
+    print(f"Messages for API: {len(messages_for_api)} items")
 
     # 4. Determine reply
     reply_text: str | None = None
 
     if ENABLE_OPENAI_ANSWER:
+        print("Step 4a: Generating OpenAI reply...")
         answer = generate_reply(messages_for_api)
         if answer:
             save_message(
@@ -123,16 +136,25 @@ def handle_user_message(messaging: dict, entry: dict) -> None:
                 timestamp=int(messaging.get("timestamp", 0)) + 1,
                 role="assistant",
             )
-            print(f"OpenAI answer for user {sender_id}: {answer}")
+            print(f"OpenAI answer: {answer!r}")
             reply_text = answer
+        else:
+            print("OpenAI returned no answer")
+    else:
+        print("Step 4a: OpenAI disabled (ENABLE_OPENAI_ANSWER=false)")
 
     # Pattern-based override
     pattern_reply = _pattern_reply(text)
     if pattern_reply:
+        print(f"Step 4b: Pattern match override: {pattern_reply!r}")
         reply_text = pattern_reply
+    else:
+        print("Step 4b: No pattern match")
 
     # 5. Send reply
     if reply_text:
-        print(f"Sending reply to {sender_id}: {reply_text}")
+        print(f"Step 5: Sending reply to {sender_id} ({len(reply_text)} chars)")
         send_messenger_message(sender_id, reply_text, page_id)
-        print("Reply sent.")
+        print("Reply sent successfully")
+    else:
+        print(f"Step 5: No reply to send for {sender_id}")
