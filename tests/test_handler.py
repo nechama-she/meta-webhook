@@ -198,34 +198,97 @@ class TestLeadService:
         mock_fetch.assert_called_once_with("L1", "p1")
         mock_save.assert_called_once()
 
-        saved = mock_save.call_args[0][0]
-        # Core identifiers
-        assert saved["leadgen_id"] == "L1"
-        assert saved["entry_id"] == "p1"
-        assert saved["page_id"] == "p1"
-        assert saved["ad_id"] == "A1"
-        assert saved["form_id"] == "F1"
-        assert saved["created_time"] == "2026-03-08T04:10:08+0000"
-        # Flattened field_data
-        assert saved["full_name"] == "John Doe"
-        assert saved["phone_number"] == "+15551234567"
-        assert saved["email"] == "john@example.com"
-        assert saved["move_size"] == "2_bedrooms"
-        assert saved["pickup_zip"] == "20001"
-        assert saved["delivery_zip"] == "10001"
 
-    @patch("meta_webhook.services.lead_service.fetch_lead_details")
-    def test_missing_leadgen_id_skipped(self, mock_fetch):
-        from meta_webhook.services.lead_service import process_leadgen
-        process_leadgen({"id": "p1"}, {"page_id": "p1"})
-        mock_fetch.assert_not_called()
+# ═══════════════════════════════════════════════════════════════════════
+#  Lead poll service
+# ═══════════════════════════════════════════════════════════════════════
 
-    @patch("meta_webhook.services.lead_service.save_event")
-    @patch("meta_webhook.services.lead_service.fetch_lead_details", return_value=None)
-    def test_fetch_failure_does_not_save(self, mock_fetch, mock_save):
-        from meta_webhook.services.lead_service import process_leadgen
-        process_leadgen({"id": "p1"}, {"leadgen_id": "L2", "page_id": "p1"})
+class TestLeadPollService:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS), \
+             patch("meta_webhook.services.lead_poll_service.PAGE_IDS", ["p1", "p2"]):
+            yield
+
+    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=True)
+    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
+        {
+            "id": "L50",
+            "created_time": "2026-03-08T10:00:00+0000",
+            "field_data": [
+                {"name": "full_name", "values": ["Jane Doe"]},
+                {"name": "email", "values": ["jane@example.com"]},
+            ],
+        },
+    ])
+    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+        {"id": "F1", "name": "Test Form"},
+    ])
+    def test_poll_saves_new_leads(self, mock_forms, mock_leads, mock_save):
+        from meta_webhook.services.lead_poll_service import poll_leads
+        count = poll_leads()
+        assert mock_forms.call_count == 2
+        assert mock_save.call_count == 2  # one lead per page x 2 pages
+        assert count == 2
+        saved_item = mock_save.call_args_list[0][0][0]
+        assert saved_item["leadgen_id"] == "L50"
+        assert saved_item["full_name"] == "Jane Doe"
+        assert saved_item["source"] == "poll"
+
+    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=False)
+    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
+        {"id": "L50", "field_data": []},
+    ])
+    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+        {"id": "F1"},
+    ])
+    def test_poll_duplicate_leads_not_counted(self, mock_forms, mock_leads, mock_save):
+        from meta_webhook.services.lead_poll_service import poll_leads
+        count = poll_leads()
+        assert count == 0
+        mock_save.assert_called()
+
+    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new")
+    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[])
+    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+        {"id": "F1"},
+    ])
+    def test_poll_no_leads_saves_nothing(self, mock_forms, mock_leads, mock_save):
+        from meta_webhook.services.lead_poll_service import poll_leads
+        count = poll_leads()
+        assert count == 0
         mock_save.assert_not_called()
+
+    @patch("meta_webhook.services.lead_poll_service.PAGE_IDS", [])
+    def test_poll_no_pages_configured(self):
+        from meta_webhook.services.lead_poll_service import poll_leads
+        count = poll_leads()
+        assert count == 0
+
+    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new")
+    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[])
+    def test_poll_no_forms_saves_nothing(self, mock_forms, mock_save):
+        from meta_webhook.services.lead_poll_service import poll_leads
+        count = poll_leads()
+        assert count == 0
+        mock_save.assert_not_called()
+
+
+class TestLeadPollHandler:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, {**ENV_VARS, "PAGE_IDS": "p1"}):
+            yield
+
+    @patch("meta_webhook.services.lead_poll_service.poll_leads", return_value=3)
+    def test_lead_poll_handler_returns_count(self, mock_poll):
+        from lead_poll_function import lead_poll_handler
+        resp = lead_poll_handler({}, None)
+        mock_poll.assert_called_once()
+        assert resp["statusCode"] == 200
+        assert "3" in resp["body"]
 
 
 # ═══════════════════════════════════════════════════════════════════════

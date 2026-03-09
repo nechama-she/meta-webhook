@@ -3,6 +3,7 @@
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 
 from meta_webhook.config import (
     GRAPH_API_URL,
@@ -124,3 +125,47 @@ def fetch_lead_details(leadgen_id: str, page_id: str) -> dict | None:
     except Exception as exc:
         print(f"Error fetching lead details: {repr(exc)}")
     return None
+
+
+def get_leadgen_forms(page_id: str) -> list[dict]:
+    """Return all leadgen forms for *page_id*."""
+    token = get_page_token(page_id)
+    forms: list[dict] = []
+    url = (
+        f"https://graph.facebook.com/v18.0/{page_id}/leadgen_forms"
+        f"?access_token={token}"
+    )
+    try:
+        while url:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            forms.extend(data.get("data", []))
+            url = data.get("paging", {}).get("next")
+    except Exception as exc:
+        print(f"Error fetching leadgen forms for page {page_id}: {repr(exc)}")
+    print(f"Found {len(forms)} leadgen forms for page {page_id}")
+    return forms
+
+
+def get_form_leads(form_id: str, page_id: str, since_timestamp: int) -> list[dict]:
+    """Pull leads created after *since_timestamp* from a single form."""
+    token = get_page_token(page_id)
+    filtering = json.dumps(
+        [{"field": "time_created", "operator": "GREATER_THAN", "value": since_timestamp}]
+    )
+    leads: list[dict] = []
+    url = (
+        f"https://graph.facebook.com/v18.0/{form_id}/leads"
+        f"?filtering={urllib.parse.quote(filtering)}"
+        f"&access_token={token}"
+    )
+    try:
+        while url:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            leads.extend(data.get("data", []))
+            url = data.get("paging", {}).get("next")
+    except Exception as exc:
+        print(f"Error fetching leads from form {form_id}: {repr(exc)}")
+    print(f"Pulled {len(leads)} leads from form {form_id} (since {since_timestamp})")
+    return leads
