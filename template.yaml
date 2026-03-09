@@ -26,3 +26,62 @@ Resources:
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
           PAGE_ACCESS_TOKEN: '{{resolve:ssm:/meta-webhook/PAGE_ACCESS_TOKEN}}'
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
+
+  # ── Lead polling (pull-based) ──────────────────────────────────────
+
+  LeadPollDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: meta-webhook-lead-poll-dlq
+      MessageRetentionPeriod: 1209600   # 14 days
+
+  LeadPollFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: meta_webhook_lead_poll
+      CodeUri: src/
+      Handler: lead_poll_function.lead_poll_handler
+      Runtime: python3.12
+      Timeout: 120
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: '*'
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt LeadPollDLQ.QueueName
+      DeadLetterQueue:
+        Type: SQS
+        TargetArn: !GetAtt LeadPollDLQ.Arn
+      Environment:
+        Variables:
+          APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
+          COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
+          OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
+          VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
+          PAGE_IDS: '{{resolve:ssm:/meta-webhook/PAGE_IDS}}'
+          LEAD_POLL_LOOKBACK_MINUTES: '30'
+      Events:
+        LeadPollSchedule:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: rate(30 minutes)
+            State: ENABLED
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+              MaximumEventAgeInSeconds: 900
+
+  LeadPollErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: meta-webhook-lead-poll-errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LeadPollFunction

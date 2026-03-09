@@ -29,6 +29,14 @@ OPENAI_HEADERS = {
     "Authorization": f"Bearer {OPENAI_API_KEY}",
 }
 
+# ── Lead polling ──────────────────────────────────────────────────────
+PAGE_IDS = [
+    pid.strip()
+    for pid in os.environ.get("PAGE_IDS", "").split(",")
+    if pid.strip()
+]
+LEAD_POLL_LOOKBACK_MINUTES = int(os.environ.get("LEAD_POLL_LOOKBACK_MINUTES", "30"))
+
 # ── DynamoDB table names ─────────────────────────────────────────────
 EVENTS_TABLE = "fb_events"
 CONVERSATIONS_TABLE = "conversations"

@@ -28,6 +28,26 @@ def save_event(event_body: dict, *, table_name: str = EVENTS_TABLE, primary_key:
         print(f"DynamoDB error saving to {table_name}: {repr(exc)}")
 
 
+def save_lead_if_new(item: dict) -> bool:
+    """Save a lead only if its ``leadgen_id`` does not already exist.
+
+    Returns ``True`` if the lead was saved, ``False`` if it was a duplicate.
+    """
+    try:
+        _leads_table.put_item(
+            Item=item,
+            ConditionExpression="attribute_not_exists(leadgen_id)",
+        )
+        print(f"Lead {item['leadgen_id']} saved (new)")
+        return True
+    except _dynamo.meta.client.exceptions.ConditionalCheckFailedException:
+        print(f"Lead {item['leadgen_id']} already exists, skipping")
+        return False
+    except Exception as exc:
+        print(f"DynamoDB error saving lead: {repr(exc)}")
+        return False
+
+
 # ── Conversations ─────────────────────────────────────────────────────
 
 def get_conversation(user_id: str) -> list[dict]:
