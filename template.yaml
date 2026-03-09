@@ -55,9 +55,12 @@ Resources:
         TargetArn: !GetAtt LeadPollDLQ.Arn
       Environment:
         Variables:
+          APP_ID: '{{resolve:ssm:/meta-webhook/APP_ID}}'
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
+          ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
+          PAGE_ACCESS_TOKEN: '{{resolve:ssm:/meta-webhook/PAGE_ACCESS_TOKEN}}'
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
           PAGE_IDS: '{{resolve:ssm:/meta-webhook/PAGE_IDS}}'
           LEAD_POLL_LOOKBACK_MINUTES: '30'
