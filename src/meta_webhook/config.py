@@ -41,3 +41,7 @@ LEAD_POLL_LOOKBACK_MINUTES = int(os.environ.get("LEAD_POLL_LOOKBACK_MINUTES", "3
 EVENTS_TABLE = "fb_events"
 CONVERSATIONS_TABLE = "conversations"
 LEADS_TABLE = "leads"
+
+# ── SmartMoving ──────────────────────────────────────────────────────
+SMARTMOVING_PROVIDER_KEY = os.environ.get("SMARTMOVING_PROVIDER_KEY", "")
+SMARTMOVING_BRANCH_ID = os.environ.get("SMARTMOVING_BRANCH_ID", "")

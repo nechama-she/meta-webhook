@@ -5,6 +5,7 @@ import time
 from meta_webhook.config import PAGE_IDS, LEAD_POLL_LOOKBACK_MINUTES
 from meta_webhook.clients.facebook_client import get_leadgen_forms, get_form_leads
 from meta_webhook.clients.dynamodb_client import save_lead_if_new
+from meta_webhook.pipeline import run_lead_actions
 
 
 def poll_leads() -> int:
@@ -47,6 +48,7 @@ def poll_leads() -> int:
                     item[name] = values[0] if len(values) == 1 else values
 
                 if save_lead_if_new(item):
+                    run_lead_actions(item)
                     total_saved += 1
 
     print(f"Lead poll: done, {total_saved} new lead(s) saved")

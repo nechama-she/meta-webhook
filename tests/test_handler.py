@@ -211,6 +211,7 @@ class TestLeadPollService:
              patch("meta_webhook.services.lead_poll_service.PAGE_IDS", ["p1", "p2"]):
             yield
 
+    @patch("meta_webhook.services.lead_poll_service.run_lead_actions")
     @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=True)
     @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
         {
@@ -225,11 +226,12 @@ class TestLeadPollService:
     @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
         {"id": "F1", "name": "Test Form"},
     ])
-    def test_poll_saves_new_leads(self, mock_forms, mock_leads, mock_save):
+    def test_poll_saves_new_leads(self, mock_forms, mock_leads, mock_save, mock_actions):
         from meta_webhook.services.lead_poll_service import poll_leads
         count = poll_leads()
         assert mock_forms.call_count == 2
         assert mock_save.call_count == 2  # one lead per page x 2 pages
+        assert mock_actions.call_count == 2
         assert count == 2
         saved_item = mock_save.call_args_list[0][0][0]
         assert saved_item["leadgen_id"] == "L50"
@@ -289,6 +291,97 @@ class TestLeadPollHandler:
         mock_poll.assert_called_once()
         assert resp["statusCode"] == 200
         assert "3" in resp["body"]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – SmartMoving action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestSmartMovingAction:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    def _make_lead(self, **overrides):
+        lead = {
+            "leadgen_id": "L100",
+            "page_id": "p1",
+            "form_id": "F1",
+            "full_name": "Jane Doe",
+            "phone_number": "+15551234567",
+            "email": "jane@example.com",
+            "pickup_zip": "20001",
+            "delivery_zip": "10001",
+            "move_date": "2026-04-01",
+            "move_size": "2_bedrooms",
+            "source": "poll",
+        }
+        lead.update(overrides)
+        return lead
+
+    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"abc-123"')
+    def test_send_to_smartmoving_builds_payload(self, mock_create):
+        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        result = send_to_smartmoving(self._make_lead())
+        mock_create.assert_called_once()
+        payload = mock_create.call_args[0][0]
+        assert payload["fullName"] == "Jane Doe"
+        assert payload["phoneNumber"] == "5551234567"
+        assert payload["email"] == "jane@example.com"
+        assert payload["originZip"] == "20001"
+        assert payload["destinationZip"] == "10001"
+        assert payload["referralSource"] == "Facebook-Gorilla-HHG-Local"
+        assert result == '"abc-123"'
+
+    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"xyz"')
+    def test_campaign_sets_nationwide_referral(self, mock_create):
+        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        send_to_smartmoving(self._make_lead(campaign="Northeast-Midwest"))
+        payload = mock_create.call_args[0][0]
+        assert payload["referralSource"] == "Facebook-Gorilla-HHG-Nationwide"
+
+    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"xyz"')
+    def test_campaign_sets_fl_ga_nc_referral(self, mock_create):
+        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        send_to_smartmoving(self._make_lead(campaign="FL-GA-NC"))
+        payload = mock_create.call_args[0][0]
+        assert payload["referralSource"] == "Facebook-Gorilla-HHG-FL-GA-NC"
+
+    def test_clean_phone_strips_plus1(self):
+        from meta_webhook.pipeline.smartmoving import _clean_phone
+        assert _clean_phone("+15551234567") == "5551234567"
+
+    def test_clean_phone_strips_1(self):
+        from meta_webhook.pipeline.smartmoving import _clean_phone
+        assert _clean_phone("15551234567") == "5551234567"
+
+    def test_clean_phone_leaves_10_digit(self):
+        from meta_webhook.pipeline.smartmoving import _clean_phone
+        assert _clean_phone("5551234567") == "5551234567"
+
+
+class TestLeadPipeline:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"ok"')
+    def test_run_lead_actions_calls_all_actions(self, mock_create):
+        from meta_webhook.pipeline import run_lead_actions
+        lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567"}
+        run_lead_actions(lead)
+        mock_create.assert_called_once()
+
+    @patch("meta_webhook.pipeline.smartmoving.create_lead", side_effect=Exception("API down"))
+    def test_run_lead_actions_handles_error(self, mock_create):
+        from meta_webhook.pipeline import run_lead_actions
+        lead = {"leadgen_id": "L1"}
+        # Should not raise — errors are caught per action
+        run_lead_actions(lead)
 
 
 # ═══════════════════════════════════════════════════════════════════════

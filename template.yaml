@@ -64,6 +64,8 @@ Resources:
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
           PAGE_IDS: '{{resolve:ssm:/meta-webhook/PAGE_IDS}}'
           LEAD_POLL_LOOKBACK_MINUTES: '30'
+          SMARTMOVING_PROVIDER_KEY: '{{resolve:ssm:/meta-webhook/SMARTMOVING_PROVIDER_KEY}}'
+          SMARTMOVING_BRANCH_ID: '{{resolve:ssm:/meta-webhook/SMARTMOVING_BRANCH_ID}}'
       Events:
         LeadPollSchedule:
           Type: ScheduleV2
