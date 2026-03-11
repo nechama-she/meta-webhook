@@ -1,6 +1,6 @@
 """AWS Lambda entry point for the scheduled lead-polling function."""
 
-from meta_webhook.services.lead_poll_service import poll_leads
+from lead_poll_service import poll_leads
 
 
 def lead_poll_handler(event, context):

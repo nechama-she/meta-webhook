@@ -1,6 +1,6 @@
 """Action: send a new lead to SmartMoving CRM."""
 
-from meta_webhook.clients.smartmoving_client import create_lead
+from crm.smartmoving import create_lead
 
 # ── Referral source mapping ──────────────────────────────────────────
 _DEFAULT_REFERRAL = "Facebook-Gorilla-HHG-Local"

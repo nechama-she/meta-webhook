@@ -1,8 +1,8 @@
 """Comment moderation - classify, delete bad comments, block abusive users."""
 
-from meta_webhook.clients.openai_client import classify_sentiment
-from meta_webhook.clients.facebook_client import delete_comment, block_user
-from meta_webhook.clients.dynamodb_client import save_event
+from ai import classify_sentiment
+from meta_api import delete_comment, block_user
+from db import save_event
 
 
 def process_comment(entry: dict, change_value: dict) -> None:

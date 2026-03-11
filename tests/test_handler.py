@@ -1,4 +1,4 @@
-"""Pure unit tests – every external dependency is mocked."""
+"""Pure unit tests - every external dependency is mocked."""
 
 import json
 import os
@@ -9,7 +9,7 @@ from unittest.mock import patch, MagicMock, call
 import pytest
 
 # ── Mock boto3 before any application import ──────────────────────────
-# dynamodb_client.py calls boto3.resource("dynamodb") at import time
+# db/client.py calls boto3.resource("dynamodb") at import time
 # and imports boto3.dynamodb.conditions.Key, so we must provide the
 # full module tree before any app module is imported.
 
@@ -37,7 +37,7 @@ class TestLambdaHandler:
     @pytest.fixture(autouse=True)
     def _env(self):
         with patch.dict(os.environ, ENV_VARS):
-            from meta_webhook.handler import lambda_handler
+            from handler import lambda_handler
             self.handler = lambda_handler
             yield
 
@@ -71,7 +71,7 @@ class TestLambdaHandler:
         }
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
-    @patch("meta_webhook.handler.process_comment")
+    @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
         entry = {"id": "p1", "changes": [{"field": "feed", "value": {"item": "comment", "comment_id": "c1"}}]}
         event = {
@@ -81,7 +81,7 @@ class TestLambdaHandler:
         self.handler(event, None)
         mock_comment.assert_called_once()
 
-    @patch("meta_webhook.handler.process_leadgen")
+    @patch("handler.process_leadgen")
     def test_post_leadgen_dispatches(self, mock_lead):
         entry = {"id": "p1", "changes": [{"field": "leadgen", "value": {"leadgen_id": "L1", "page_id": "p1"}}]}
         event = {
@@ -91,7 +91,7 @@ class TestLambdaHandler:
         self.handler(event, None)
         mock_lead.assert_called_once()
 
-    @patch("meta_webhook.handler.handle_user_message")
+    @patch("handler.handle_user_message")
     def test_post_messenger_message_dispatches(self, mock_msg):
         entry = {
             "id": "p1",
@@ -104,7 +104,7 @@ class TestLambdaHandler:
         self.handler(event, None)
         mock_msg.assert_called_once()
 
-    @patch("meta_webhook.handler.handle_echo")
+    @patch("handler.handle_echo")
     def test_post_echo_dispatches(self, mock_echo):
         entry = {
             "id": "p1",
@@ -129,37 +129,37 @@ class TestCommentService:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.services.comment_service.save_event")
-    @patch("meta_webhook.services.comment_service.classify_sentiment", return_value="Good")
+    @patch("services.comment_service.save_event")
+    @patch("services.comment_service.classify_sentiment", return_value="Good")
     def test_good_comment_not_saved(self, mock_classify, mock_save):
-        from meta_webhook.services.comment_service import process_comment
+        from services.comment_service import process_comment
         process_comment({"id": "p1"}, {"comment_id": "c1", "message": "Nice!", "from": {"id": "u1"}})
         mock_classify.assert_called_once_with("Nice!")
         mock_save.assert_not_called()
 
-    @patch("meta_webhook.services.comment_service.save_event")
-    @patch("meta_webhook.services.comment_service.block_user")
-    @patch("meta_webhook.services.comment_service.delete_comment")
-    @patch("meta_webhook.services.comment_service.classify_sentiment", return_value="Bad")
+    @patch("services.comment_service.save_event")
+    @patch("services.comment_service.block_user")
+    @patch("services.comment_service.delete_comment")
+    @patch("services.comment_service.classify_sentiment", return_value="Bad")
     def test_bad_comment_deletes_blocks_saves(self, mock_classify, mock_del, mock_block, mock_save):
-        from meta_webhook.services.comment_service import process_comment
+        from services.comment_service import process_comment
         process_comment({"id": "p1"}, {"comment_id": "c2", "message": "Terrible", "from": {"id": "u2"}})
         mock_del.assert_called_once_with("c2", "p1")
         mock_block.assert_called_once_with("u2", "p1")
         mock_save.assert_called_once()
         assert mock_save.call_args[0][0]["classifier"] == "Bad"
 
-    @patch("meta_webhook.services.comment_service.classify_sentiment")
+    @patch("services.comment_service.classify_sentiment")
     def test_empty_comment_skipped(self, mock_classify):
-        from meta_webhook.services.comment_service import process_comment
+        from services.comment_service import process_comment
         process_comment({"id": "p1"}, {"comment_id": "c3", "message": ""})
         mock_classify.assert_not_called()
 
-    @patch("meta_webhook.services.comment_service.save_event")
-    @patch("meta_webhook.services.comment_service.delete_comment")
-    @patch("meta_webhook.services.comment_service.classify_sentiment", return_value="Bad")
+    @patch("services.comment_service.save_event")
+    @patch("services.comment_service.delete_comment")
+    @patch("services.comment_service.classify_sentiment", return_value="Bad")
     def test_bad_comment_no_user_skips_block(self, mock_classify, mock_del, mock_save):
-        from meta_webhook.services.comment_service import process_comment
+        from services.comment_service import process_comment
         process_comment({"id": "p1"}, {"comment_id": "c4", "message": "Awful"})
         mock_del.assert_called_once()
         # block_user not imported/called since no user_id
@@ -177,8 +177,8 @@ class TestLeadService:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.services.lead_service.save_event")
-    @patch("meta_webhook.services.lead_service.fetch_lead_details", return_value={
+    @patch("services.lead_service.save_event")
+    @patch("services.lead_service.fetch_lead_details", return_value={
         "id": "L1",
         "created_time": "2026-03-08T04:10:08+0000",
         "field_data": [
@@ -191,7 +191,7 @@ class TestLeadService:
         ],
     })
     def test_lead_fetched_and_saved(self, mock_fetch, mock_save):
-        from meta_webhook.services.lead_service import process_leadgen
+        from services.lead_service import process_leadgen
         process_leadgen(
             {"id": "p1"},
             {"leadgen_id": "L1", "page_id": "p1", "ad_id": "A1", "form_id": "F1"},
@@ -209,12 +209,12 @@ class TestLeadPollService:
     @pytest.fixture(autouse=True)
     def _env(self):
         with patch.dict(os.environ, ENV_VARS), \
-             patch("meta_webhook.services.lead_poll_service.PAGE_IDS", ["p1", "p2"]):
+             patch("lead_poll_service.PAGE_IDS", ["p1", "p2"]):
             yield
 
-    @patch("meta_webhook.services.lead_poll_service.run_pipeline")
-    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=True)
-    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
+    @patch("lead_poll_service.run_pipeline")
+    @patch("lead_poll_service.save_lead_if_new", return_value=True)
+    @patch("lead_poll_service.get_form_leads", return_value=[
         {
             "id": "L50",
             "created_time": "2026-03-08T10:00:00+0000",
@@ -224,11 +224,11 @@ class TestLeadPollService:
             ],
         },
     ])
-    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+    @patch("lead_poll_service.get_leadgen_forms", return_value=[
         {"id": "F1", "name": "Test Form"},
     ])
     def test_poll_saves_new_leads(self, mock_forms, mock_leads, mock_save, mock_actions):
-        from meta_webhook.services.lead_poll_service import poll_leads
+        from lead_poll_service import poll_leads
         count = poll_leads()
         assert mock_forms.call_count == 2
         assert mock_save.call_count == 2  # one lead per page x 2 pages
@@ -239,40 +239,40 @@ class TestLeadPollService:
         assert saved_item["full_name"] == "Jane Doe"
         assert saved_item["source"] == "poll"
 
-    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=False)
-    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
+    @patch("lead_poll_service.save_lead_if_new", return_value=False)
+    @patch("lead_poll_service.get_form_leads", return_value=[
         {"id": "L50", "field_data": []},
     ])
-    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+    @patch("lead_poll_service.get_leadgen_forms", return_value=[
         {"id": "F1"},
     ])
     def test_poll_duplicate_leads_not_counted(self, mock_forms, mock_leads, mock_save):
-        from meta_webhook.services.lead_poll_service import poll_leads
+        from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
         mock_save.assert_called()
 
-    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new")
-    @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[])
-    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[
+    @patch("lead_poll_service.save_lead_if_new")
+    @patch("lead_poll_service.get_form_leads", return_value=[])
+    @patch("lead_poll_service.get_leadgen_forms", return_value=[
         {"id": "F1"},
     ])
     def test_poll_no_leads_saves_nothing(self, mock_forms, mock_leads, mock_save):
-        from meta_webhook.services.lead_poll_service import poll_leads
+        from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
         mock_save.assert_not_called()
 
-    @patch("meta_webhook.services.lead_poll_service.PAGE_IDS", [])
+    @patch("lead_poll_service.PAGE_IDS", [])
     def test_poll_no_pages_configured(self):
-        from meta_webhook.services.lead_poll_service import poll_leads
+        from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
 
-    @patch("meta_webhook.services.lead_poll_service.save_lead_if_new")
-    @patch("meta_webhook.services.lead_poll_service.get_leadgen_forms", return_value=[])
+    @patch("lead_poll_service.save_lead_if_new")
+    @patch("lead_poll_service.get_leadgen_forms", return_value=[])
     def test_poll_no_forms_saves_nothing(self, mock_forms, mock_save):
-        from meta_webhook.services.lead_poll_service import poll_leads
+        from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
         mock_save.assert_not_called()
@@ -285,7 +285,7 @@ class TestLeadPollHandler:
         with patch.dict(os.environ, {**ENV_VARS, "PAGE_IDS": "p1"}):
             yield
 
-    @patch("meta_webhook.services.lead_poll_service.poll_leads", return_value=3)
+    @patch("lead_poll_service.poll_leads", return_value=3)
     def test_lead_poll_handler_returns_count(self, mock_poll):
         from lead_poll_function import lead_poll_handler
         resp = lead_poll_handler({}, None)
@@ -322,9 +322,9 @@ class TestSmartMovingAction:
         lead.update(overrides)
         return lead
 
-    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"abc-123"')
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"abc-123"')
     def test_send_to_smartmoving_builds_payload(self, mock_create):
-        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
+        from pipeline.actions.smartmoving import send_to_smartmoving
         result = send_to_smartmoving(self._make_lead())
         mock_create.assert_called_once()
         payload = mock_create.call_args[0][0]
@@ -336,30 +336,30 @@ class TestSmartMovingAction:
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Local"
         assert result["smartmoving_lead_id"] == '"abc-123"'
 
-    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_nationwide_referral(self, mock_create):
-        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
+        from pipeline.actions.smartmoving import send_to_smartmoving
         send_to_smartmoving(self._make_lead(campaign="Northeast-Midwest"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Nationwide"
 
-    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_fl_ga_nc_referral(self, mock_create):
-        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
+        from pipeline.actions.smartmoving import send_to_smartmoving
         send_to_smartmoving(self._make_lead(campaign="FL-GA-NC"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-FL-GA-NC"
 
     def test_clean_phone_strips_plus1(self):
-        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
+        from pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("+15551234567") == "5551234567"
 
     def test_clean_phone_strips_1(self):
-        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
+        from pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("15551234567") == "5551234567"
 
     def test_clean_phone_leaves_10_digit(self):
-        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
+        from pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("5551234567") == "5551234567"
 
 
@@ -370,22 +370,22 @@ class TestLeadPipeline:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"ok"')
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"ok"')
     def test_run_pipeline_calls_all_actions(self, mock_create):
-        from meta_webhook.pipeline import run_pipeline
+        from pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567"}
         run_pipeline("new_lead", lead)
         mock_create.assert_called_once()
 
-    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
+    @patch("pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
     def test_run_pipeline_handles_error(self, mock_create):
-        from meta_webhook.pipeline import run_pipeline
+        from pipeline import run_pipeline
         lead = {"leadgen_id": "L1"}
         # Should not raise — errors are caught per action
         run_pipeline("new_lead", lead)
 
     def test_run_pipeline_unknown_name_returns_data(self):
-        from meta_webhook.pipeline import run_pipeline
+        from pipeline import run_pipeline
         data = {"leadgen_id": "L1"}
         result = run_pipeline("nonexistent", data)
         assert result is data
@@ -402,127 +402,127 @@ class TestDateParserAction:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_iso_date_passthrough(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "2026-04-20"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-04-20"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_slash_date(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "4/20"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-04-20"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_slash_date_with_year(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "4/20/27"}
         result = format_move_date(data)
         assert result["move_date"] == "2027-04-20"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_month_name_and_day(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "April 20"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-04-20"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_abbreviated_month(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "Apr 20"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-04-20"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_month_only_uses_last_day(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "april"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-04-30"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_past_date_bumps_to_next_year(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "1/15"}
         result = format_move_date(data)
         assert result["move_date"] == "2027-01-15"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_empty_move_date_uses_fallback(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": ""}
         result = format_move_date(data)
         assert result["move_date"] == "2026-03-24"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=("2026-05-01", "Interpreted 'asap' as May 1"))
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.parse_date", return_value=("2026-05-01", "Interpreted 'asap' as May 1"))
+    @patch("pipeline.actions.date_parser.date")
     def test_unparseable_text_falls_back_to_ai(self, mock_date, mock_parse):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "asap"}
         result = format_move_date(data)
         mock_parse.assert_called_once_with("asap", "2026-03-10")
         assert result["move_date"] == "2026-05-01"
         assert result["move_date_explanation"] == "Interpreted 'asap' as May 1"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=(None, None))
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.parse_date", return_value=(None, None))
+    @patch("pipeline.actions.date_parser.date")
     def test_unparseable_text_ai_fails_uses_fallback(self, mock_date, mock_parse):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "asap"}
         result = format_move_date(data)
         mock_parse.assert_called_once()
         assert result["move_date"] == "2026-03-24"
         assert result["move_date_explanation"] == "AI unavailable, used fallback"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=("2026-07-20", "next Tuesday in July"))
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.parse_date", return_value=("2026-07-20", "next Tuesday in July"))
+    @patch("pipeline.actions.date_parser.date")
     def test_ai_date_sets_explanation(self, mock_date, mock_parse):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "next tuesday in july"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-07-20"
         assert result["move_date_explanation"] == "next Tuesday in July"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_when_is_the_move_field(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"when_is_the_move": "June 15"}
         result = format_move_date(data)
         assert result["move_date"] == "2026-06-15"
 
-    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    @patch("pipeline.actions.date_parser.date")
     def test_returns_data_dict(self, mock_date):
         mock_date.today.return_value = date(2026, 3, 10)
         mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        from pipeline.actions.date_parser import format_move_date
         data = {"move_date": "4/20", "full_name": "Jane"}
         result = format_move_date(data)
         assert result is data
@@ -541,43 +541,43 @@ class TestConversationService:
             yield
 
     def test_summarize_returns_conversation_when_below_threshold(self):
-        from meta_webhook.services.conversation_service import summarize
+        from services.conversation_service import summarize
         msgs = [{"role": "user", "text": f"msg{i}"} for i in range(3)]
-        with patch("meta_webhook.services.conversation_service.replace_summary"), \
-             patch("meta_webhook.services.conversation_service.summarize_conversation"):
+        with patch("services.conversation_service.replace_summary"), \
+             patch("services.conversation_service.summarize_conversation"):
             result = summarize(msgs, "u1", "p1")
         # 3 messages < 10 threshold → returns raw conversation
         assert len(result) == 3
         assert result[0] == {"role": "user", "content": "msg0"}
 
-    @patch("meta_webhook.services.conversation_service.replace_summary")
-    @patch("meta_webhook.services.conversation_service.summarize_conversation", return_value="Summary text")
+    @patch("services.conversation_service.replace_summary")
+    @patch("services.conversation_service.summarize_conversation", return_value="Summary text")
     def test_summarize_creates_summary_at_threshold(self, mock_summarize, mock_replace):
-        from meta_webhook.services.conversation_service import summarize
+        from services.conversation_service import summarize
         msgs = [{"role": "user", "text": f"msg{i}"} for i in range(10)]
         result = summarize(msgs, "u1", "p1")
         mock_summarize.assert_called_once()
         mock_replace.assert_called_once()
         assert result == [{"role": "system", "content": "Summary text"}]
 
-    @patch("meta_webhook.services.conversation_service.replace_summary")
-    @patch("meta_webhook.services.conversation_service.summarize_conversation", return_value=None)
+    @patch("services.conversation_service.replace_summary")
+    @patch("services.conversation_service.summarize_conversation", return_value=None)
     def test_summarize_falls_back_when_openai_fails(self, mock_summarize, mock_replace):
-        from meta_webhook.services.conversation_service import summarize
+        from services.conversation_service import summarize
         msgs = [{"role": "user", "text": f"msg{i}"} for i in range(10)]
         result = summarize(msgs, "u1", "p1")
         mock_replace.assert_not_called()
         assert len(result) == 10  # returns raw conversation
 
     def test_summarize_skips_messages_before_existing_summary(self):
-        from meta_webhook.services.conversation_service import summarize
+        from services.conversation_service import summarize
         conv = [
             {"role": "summary", "text": "old summary"},
             {"role": "user", "text": "msg1"},
             {"role": "user", "text": "msg2"},
         ]
-        with patch("meta_webhook.services.conversation_service.replace_summary"), \
-             patch("meta_webhook.services.conversation_service.summarize_conversation"):
+        with patch("services.conversation_service.replace_summary"), \
+             patch("services.conversation_service.summarize_conversation"):
             result = summarize(conv, "u1", "p1")
         # Starts from summary index (0) → 3 items
         assert len(result) == 3
@@ -603,9 +603,9 @@ class TestMessengerService:
             "timestamp": ts,
         }
 
-    @patch("meta_webhook.services.messenger_service.save_message")
+    @patch("services.messenger_service.save_message")
     def test_handle_echo_saves_as_sales(self, mock_save):
-        from meta_webhook.services.messenger_service import handle_echo
+        from services.messenger_service import handle_echo
         messaging = {
             "sender": {"id": "p1"},
             "recipient": {"id": "u1"},
@@ -617,47 +617,47 @@ class TestMessengerService:
         assert mock_save.call_args[1]["role"] == "sales"
         assert mock_save.call_args[1]["user_id"] == "u1"
 
-    @patch("meta_webhook.services.messenger_service.send_messenger_message")
-    @patch("meta_webhook.services.messenger_service.generate_reply", return_value="AI reply")
-    @patch("meta_webhook.services.messenger_service.summarize", return_value=[{"role": "user", "content": "hello"}])
-    @patch("meta_webhook.services.messenger_service.log_conversation")
-    @patch("meta_webhook.services.messenger_service.fetch_conversation", return_value=[])
-    @patch("meta_webhook.services.messenger_service.save_message")
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.generate_reply", return_value="AI reply")
+    @patch("services.messenger_service.summarize", return_value=[{"role": "user", "content": "hello"}])
+    @patch("services.messenger_service.log_conversation")
+    @patch("services.messenger_service.fetch_conversation", return_value=[])
+    @patch("services.messenger_service.save_message")
     def test_user_message_generates_reply_and_sends(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
-        from meta_webhook.services.messenger_service import handle_user_message
+        from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(), {"id": "p1"})
         # Saves user message + AI answer = 2 calls
         assert mock_save.call_count == 2
         mock_reply.assert_called_once()
         mock_send.assert_called_once_with("u1", "AI reply", "p1")
 
-    @patch("meta_webhook.services.messenger_service.send_messenger_message")
-    @patch("meta_webhook.services.messenger_service.generate_reply", return_value="AI reply")
-    @patch("meta_webhook.services.messenger_service.summarize", return_value=[])
-    @patch("meta_webhook.services.messenger_service.log_conversation")
-    @patch("meta_webhook.services.messenger_service.fetch_conversation", return_value=[])
-    @patch("meta_webhook.services.messenger_service.save_message")
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.generate_reply", return_value="AI reply")
+    @patch("services.messenger_service.summarize", return_value=[])
+    @patch("services.messenger_service.log_conversation")
+    @patch("services.messenger_service.fetch_conversation", return_value=[])
+    @patch("services.messenger_service.save_message")
     def test_pattern_reply_overrides_openai(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
-        from meta_webhook.services.messenger_service import handle_user_message
+        from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
         # Pattern reply overrides — send_messenger_message called with storage question
         sent_text = mock_send.call_args[0][1]
         assert "storage unit" in sent_text
 
-    @patch("meta_webhook.services.messenger_service.send_messenger_message")
-    @patch("meta_webhook.services.messenger_service.generate_reply", return_value=None)
-    @patch("meta_webhook.services.messenger_service.summarize", return_value=[])
-    @patch("meta_webhook.services.messenger_service.log_conversation")
-    @patch("meta_webhook.services.messenger_service.fetch_conversation", return_value=[])
-    @patch("meta_webhook.services.messenger_service.save_message")
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.generate_reply", return_value=None)
+    @patch("services.messenger_service.summarize", return_value=[])
+    @patch("services.messenger_service.log_conversation")
+    @patch("services.messenger_service.fetch_conversation", return_value=[])
+    @patch("services.messenger_service.save_message")
     def test_no_reply_when_openai_returns_none_and_no_pattern(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
-        from meta_webhook.services.messenger_service import handle_user_message
+        from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="just chatting"), {"id": "p1"})
         mock_send.assert_not_called()
 
-    @patch("meta_webhook.services.messenger_service.save_message")
+    @patch("services.messenger_service.save_message")
     def test_empty_message_skipped(self, mock_save):
-        from meta_webhook.services.messenger_service import handle_user_message
+        from services.messenger_service import handle_user_message
         messaging = {"sender": {"id": "u1"}, "message": {"text": "", "mid": "m1"}}
         handle_user_message(messaging, {"id": "p1"})
         mock_save.assert_not_called()
@@ -674,49 +674,49 @@ class TestOpenAIClient:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Bad")
+    @patch("ai.providers.openai.chat_completion", return_value="Bad")
     def test_classify_sentiment_bad(self, mock_cc):
-        from meta_webhook.clients.openai_client import classify_sentiment
+        from ai.providers.openai import classify_sentiment
         assert classify_sentiment("terrible service") == "Bad"
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Good")
+    @patch("ai.providers.openai.chat_completion", return_value="Good")
     def test_classify_sentiment_good(self, mock_cc):
-        from meta_webhook.clients.openai_client import classify_sentiment
+        from ai.providers.openai import classify_sentiment
         assert classify_sentiment("great job") == "Good"
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value=None)
+    @patch("ai.providers.openai.chat_completion", return_value=None)
     def test_classify_sentiment_fallback_on_error(self, mock_cc):
-        from meta_webhook.clients.openai_client import classify_sentiment
+        from ai.providers.openai import classify_sentiment
         assert classify_sentiment("anything") == "Good"
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Short summary")
+    @patch("ai.providers.openai.chat_completion", return_value="Short summary")
     def test_summarize_conversation(self, mock_cc):
-        from meta_webhook.clients.openai_client import summarize_conversation
+        from ai.providers.openai import summarize_conversation
         assert summarize_conversation("long text") == "Short summary"
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Hello!")
+    @patch("ai.providers.openai.chat_completion", return_value="Hello!")
     def test_generate_reply(self, mock_cc):
-        from meta_webhook.clients.openai_client import generate_reply
+        from ai.providers.openai import generate_reply
         assert generate_reply([{"role": "user", "content": "hi"}]) == "Hello!"
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Date: 2026-05-15\nExplanation: Mid-May, closest upcoming")
+    @patch("ai.providers.openai.chat_completion", return_value="Date: 2026-05-15\nExplanation: Mid-May, closest upcoming")
     def test_parse_date_returns_date_and_explanation(self, mock_cc):
-        from meta_webhook.clients.openai_client import parse_date
+        from ai.providers.openai import parse_date
         iso_date, explanation = parse_date("mid may", "2026-03-10")
         assert iso_date == "2026-05-15"
         assert explanation == "Mid-May, closest upcoming"
         mock_cc.assert_called_once()
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value=None)
+    @patch("ai.providers.openai.chat_completion", return_value=None)
     def test_parse_date_returns_none_on_failure(self, mock_cc):
-        from meta_webhook.clients.openai_client import parse_date
+        from ai.providers.openai import parse_date
         iso_date, explanation = parse_date("gibberish", "2026-03-10")
         assert iso_date is None
         assert explanation is None
 
-    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Date: 2026-03-24\nExplanation: No valid date found, used fallback (today + 14 days)")
+    @patch("ai.providers.openai.chat_completion", return_value="Date: 2026-03-24\nExplanation: No valid date found, used fallback (today + 14 days)")
     def test_parse_date_fallback_response(self, mock_cc):
-        from meta_webhook.clients.openai_client import parse_date
+        from ai.providers.openai import parse_date
         iso_date, explanation = parse_date("asap", "2026-03-10")
         assert iso_date == "2026-03-24"
         assert "fallback" in explanation.lower()

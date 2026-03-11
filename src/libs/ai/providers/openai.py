@@ -1,10 +1,10 @@
-"""Thin wrapper around the OpenAI Chat Completions API."""
+"""OpenAI provider – Chat Completions API."""
 
 import json
 import urllib.request
 import urllib.error
 
-from meta_webhook.config import OPENAI_URL, OPENAI_HEADERS, OPENAI_MODEL
+from ai.config import OPENAI_URL, OPENAI_HEADERS, OPENAI_MODEL
 
 
 def chat_completion(
@@ -45,10 +45,7 @@ def chat_completion(
 
 
 def classify_sentiment(text: str) -> str:
-    """Return ``'Bad'`` or ``'Good'`` for *text*.
-
-    Falls back to ``'Good'`` when the API is unreachable.
-    """
+    """Return ``'Bad'`` or ``'Good'`` for *text*."""
     print(f"Classifying sentiment for: {text!r}")
     system_prompt = (
         "Classify the following text as 'Bad' if it expresses any negative "
@@ -69,10 +66,7 @@ def classify_sentiment(text: str) -> str:
 
 
 def summarize_conversation(text: str) -> str | None:
-    """Ask OpenAI to summarise a conversation block.
-
-    Returns the summary string or ``None`` on failure.
-    """
+    """Ask OpenAI to summarise a conversation block."""
     print(f"Summarizing conversation ({len(text)} chars)")
     return chat_completion(
         [

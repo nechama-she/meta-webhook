@@ -3,12 +3,12 @@
 import time
 import uuid
 
-from meta_webhook.clients.dynamodb_client import (
+from db import (
     get_conversation,
     save_conversation_message,
     replace_summary,
 )
-from meta_webhook.clients.openai_client import summarize_conversation
+from ai import summarize_conversation
 
 
 def save_message(

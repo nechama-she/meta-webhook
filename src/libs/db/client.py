@@ -5,7 +5,7 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from meta_webhook.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE
+from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE
 
 _dynamo = boto3.resource("dynamodb")
 
