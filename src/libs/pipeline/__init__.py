@@ -31,7 +31,7 @@ def run_pipeline(name: str, data: dict) -> dict:
     """
     actions = _REGISTRY.get(name)
     if actions is None:
-        print(f"Pipeline '{name}' not found – skipping")
+        print(f"Pipeline '{name}' not found - skipping")
         return data
 
     return _run_actions(name, actions, data)

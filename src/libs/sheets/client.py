@@ -1,21 +1,28 @@
 """Google Sheets client – append rows via the Sheets API v4."""
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _BASE = "https://sheets.googleapis.com/v4/spreadsheets"
+_SSM_PARAM = "/meta-webhook/GOOGLE_SHEETS_CREDENTIALS"
 
 
 def _get_credentials():
-    """Build service-account credentials from the JSON key in env."""
+    """Fetch service-account JSON from SSM and build credentials."""
+    import boto3
     from google.oauth2 import service_account
     from google.auth.transport.requests import Request as AuthRequest
 
-    raw = os.environ.get("GOOGLE_SHEETS_CREDENTIALS", "")
+    try:
+        ssm = boto3.client("ssm")
+        resp = ssm.get_parameter(Name=_SSM_PARAM, WithDecryption=True)
+        raw = resp["Parameter"]["Value"]
+    except Exception as exc:
+        print(f"Google Sheets: failed to read SSM param {_SSM_PARAM}: {exc}")
+        return None
     if not raw:
         return None
     info = json.loads(raw)

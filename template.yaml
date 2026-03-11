@@ -70,6 +70,11 @@ Resources:
               Action:
                 - ses:SendEmail
               Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/GOOGLE_SHEETS_CREDENTIALS'
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt LeadPollDLQ.Arn
@@ -87,7 +92,6 @@ Resources:
           HHG_NOTIFY_TO: '{{resolve:ssm:/meta-webhook/HHG_NOTIFY_TO}}'
           GRANOT_API_ID: '{{resolve:ssm:/meta-webhook/GRANOT_API_ID}}'
           GRANOT_MOVER_REF: '{{resolve:ssm:/meta-webhook/GRANOT_MOVER_REF}}'
-          GOOGLE_SHEETS_CREDENTIALS: '{{resolve:ssm:/meta-webhook/GOOGLE_SHEETS_CREDENTIALS}}'
           BORAT_LEADS_SPREADSHEET_ID: '{{resolve:ssm:/meta-webhook/BORAT_LEADS_SPREADSHEET_ID}}'
       Events:
         LeadPollSchedule:
