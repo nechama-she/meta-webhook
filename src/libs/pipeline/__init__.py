@@ -1,6 +1,6 @@
 """Pipeline dispatcher – look up a pipeline by name and execute its actions."""
 
-from meta_webhook.pipeline.pipelines import new_lead
+from pipeline.pipelines import new_lead
 
 _REGISTRY: dict[str, list] = {
     "new_lead": new_lead.ACTIONS,

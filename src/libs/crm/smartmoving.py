@@ -4,7 +4,7 @@ import json
 import urllib.request
 import urllib.error
 
-from meta_webhook.config import SMARTMOVING_PROVIDER_KEY, SMARTMOVING_BRANCH_ID
+from crm.config import SMARTMOVING_PROVIDER_KEY, SMARTMOVING_BRANCH_ID
 
 _BASE_URL = "https://api.smartmoving.com/api/leads/from-provider/v2"
 

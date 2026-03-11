@@ -1,17 +1,21 @@
 """Messenger inbound-message handling and auto-reply logic."""
 
+import os
 import re
 import time
 import uuid
 
-from meta_webhook.config import ENABLE_OPENAI_ANSWER
-from meta_webhook.clients.openai_client import generate_reply
-from meta_webhook.clients.facebook_client import send_messenger_message
-from meta_webhook.services.conversation_service import (
+from ai import generate_reply
+from meta_api import send_messenger_message
+from services.conversation_service import (
     save_message,
     fetch_conversation,
     log_conversation,
     summarize,
+)
+
+ENABLE_OPENAI_ANSWER = (
+    os.environ.get("ENABLE_OPENAI_ANSWER", "true").lower() == "true"
 )
 
 

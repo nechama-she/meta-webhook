@@ -3,7 +3,7 @@
 import re
 from datetime import date, timedelta
 
-from meta_webhook.clients.openai_client import parse_date
+from ai import parse_date
 
 _MONTH_MAP = {
     "jan": 1, "january": 1,
@@ -53,7 +53,7 @@ def format_move_date(data: dict) -> dict:
         data["move_date"] = parsed.isoformat()
         print(f"Date parser: '{raw}' → {data['move_date']}")
     else:
-        # Regex failed – ask OpenAI
+        # Regex failed – ask AI
         ai_date, ai_explanation = parse_date(raw, today.isoformat())
         if ai_date:
             data["move_date"] = ai_date

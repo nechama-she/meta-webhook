@@ -5,7 +5,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
-from meta_webhook.config import (
+from meta_api.config import (
     GRAPH_API_URL,
     ACCOUNTS_API_VERSION,
     COMMENTS_DETECTION_USER_TOKEN,
@@ -128,22 +128,24 @@ def fetch_lead_details(leadgen_id: str, page_id: str) -> dict | None:
 
 
 def get_leadgen_forms(page_id: str) -> list[dict]:
-    """Return all leadgen forms for *page_id*."""
+    """Return only **active** leadgen forms for *page_id*."""
     token = get_page_token(page_id)
     forms: list[dict] = []
     url = (
         f"https://graph.facebook.com/v18.0/{page_id}/leadgen_forms"
-        f"?access_token={token}"
+        f"?fields=id,name,status&access_token={token}"
     )
     try:
         while url:
             with urllib.request.urlopen(url, timeout=15) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-            forms.extend(data.get("data", []))
+            for form in data.get("data", []):
+                if form.get("status") == "ACTIVE":
+                    forms.append(form)
             url = data.get("paging", {}).get("next")
     except Exception as exc:
         print(f"Error fetching leadgen forms for page {page_id}: {repr(exc)}")
-    print(f"Found {len(forms)} leadgen forms for page {page_id}")
+    print(f"Found {len(forms)} active leadgen forms for page {page_id}")
     return forms
 
 

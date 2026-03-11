@@ -1,11 +1,13 @@
 """AWS Lambda handler - routing only, no business logic."""
 
 import json
+import os
 
-from meta_webhook.config import VERIFY_TOKEN
-from meta_webhook.services.comment_service import process_comment
-from meta_webhook.services.lead_service import process_leadgen
-from meta_webhook.services.messenger_service import handle_echo, handle_user_message
+from services.comment_service import process_comment
+from services.lead_service import process_leadgen
+from services.messenger_service import handle_echo, handle_user_message
+
+VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 
 
 def lambda_handler(event, context):

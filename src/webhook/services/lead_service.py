@@ -2,9 +2,9 @@
 
 import json
 
-from meta_webhook.clients.facebook_client import fetch_lead_details
-from meta_webhook.clients.dynamodb_client import save_event
-from meta_webhook.config import LEADS_TABLE
+from meta_api import fetch_lead_details
+from db import save_event
+from db.config import LEADS_TABLE
 
 
 def process_leadgen(entry: dict, lead_value: dict) -> None:

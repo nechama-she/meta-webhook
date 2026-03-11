@@ -1,11 +1,18 @@
 """Periodic lead polling - pulls leads from Facebook page forms."""
 
+import os
 import time
 
-from meta_webhook.config import PAGE_IDS, LEAD_POLL_LOOKBACK_MINUTES
-from meta_webhook.clients.facebook_client import get_leadgen_forms, get_form_leads
-from meta_webhook.clients.dynamodb_client import save_lead_if_new
-from meta_webhook.pipeline import run_pipeline
+from meta_api import get_leadgen_forms, get_form_leads
+from db import save_lead_if_new
+from pipeline import run_pipeline
+
+PAGE_IDS = [
+    pid.strip()
+    for pid in os.environ.get("PAGE_IDS", "").split(",")
+    if pid.strip()
+]
+LEAD_POLL_LOOKBACK_MINUTES = int(os.environ.get("LEAD_POLL_LOOKBACK_MINUTES", "30"))
 
 
 def poll_leads() -> int:

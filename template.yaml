@@ -2,15 +2,30 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Resources:
+
+  # ── Shared Lambda Layer ────────────────────────────────────────────
+  SharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: meta-webhook-shared
+      ContentUri: src/libs/
+      CompatibleRuntimes:
+        - python3.12
+    Metadata:
+      BuildMethod: python3.12
+
+  # ── Webhook function ───────────────────────────────────────────────
   MetaWebhookFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: meta_webhook
-      CodeUri: src/
+      CodeUri: src/webhook/
       Handler: lambda_function.lambda_handler
       Runtime: python3.12
       Timeout: 30
       MemorySize: 256
+      Layers:
+        - !Ref SharedLayer
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
@@ -19,12 +34,10 @@ Resources:
         AuthType: NONE
       Environment:
         Variables:
-          APP_ID: '{{resolve:ssm:/meta-webhook/APP_ID}}'
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
           ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
-          PAGE_ACCESS_TOKEN: '{{resolve:ssm:/meta-webhook/PAGE_ACCESS_TOKEN}}'
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
 
   # ── Lead polling (pull-based) ──────────────────────────────────────
@@ -39,11 +52,13 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: meta_webhook_lead_poll
-      CodeUri: src/
+      CodeUri: src/poll/
       Handler: lead_poll_function.lead_poll_handler
       Runtime: python3.12
       Timeout: 120
       MemorySize: 256
+      Layers:
+        - !Ref SharedLayer
       Policies:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
@@ -55,13 +70,9 @@ Resources:
         TargetArn: !GetAtt LeadPollDLQ.Arn
       Environment:
         Variables:
-          APP_ID: '{{resolve:ssm:/meta-webhook/APP_ID}}'
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
-          ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
-          PAGE_ACCESS_TOKEN: '{{resolve:ssm:/meta-webhook/PAGE_ACCESS_TOKEN}}'
-          VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
           PAGE_IDS: '{{resolve:ssm:/meta-webhook/PAGE_IDS}}'
           LEAD_POLL_LOOKBACK_MINUTES: '30'
           SMARTMOVING_PROVIDER_KEY: '{{resolve:ssm:/meta-webhook/SMARTMOVING_PROVIDER_KEY}}'
