@@ -1,5 +1,7 @@
 """Action: send a new lead to SmartMoving CRM."""
 
+import os
+
 from crm.smartmoving import create_lead
 
 # ── Referral source mapping ──────────────────────────────────────────
@@ -20,11 +22,8 @@ def _clean_phone(phone: str) -> str:
     return phone
 
 
-def send_to_smartmoving(data: dict) -> dict:
-    """Transform a lead dict and POST it to SmartMoving.
-
-    Returns the data dict (possibly enriched with smartmoving_lead_id).
-    """
+def _build_payload(data: dict) -> dict:
+    """Build the SmartMoving payload from lead data."""
     phone = _clean_phone(data.get("phone_number", ""))
     full_name = data.get("full_name", "")
     email = data.get("email", "")
@@ -59,7 +58,7 @@ def send_to_smartmoving(data: dict) -> dict:
 
     referral_source = _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
 
-    payload = {
+    return {
         "fullName": full_name,
         "phoneNumber": phone,
         "email": email,
@@ -73,8 +72,32 @@ def send_to_smartmoving(data: dict) -> dict:
         "moveSize": move_size,
     }
 
+
+def send_to_smartmoving(data: dict) -> dict:
+    """Send lead to SmartMoving using the Gorilla branch.
+
+    Returns the data dict (possibly enriched with smartmoving_lead_id).
+    """
+    payload = _build_payload(data)
     print(f"SmartMoving payload: {payload}")
     result = create_lead(payload)
     if result:
         data["smartmoving_lead_id"] = result
+    return data
+
+
+def send_to_smartmoving_wilson(data: dict) -> dict:
+    """Send lead to SmartMoving using the Wilson Bros branch.
+
+    Returns the data dict (possibly enriched with smartmoving_wilson_lead_id).
+    """
+    branch_id = os.environ.get("SMARTMOVING_WILSON_BRANCH_ID", "")
+    if not branch_id:
+        print("SmartMoving Wilson: SMARTMOVING_WILSON_BRANCH_ID not set, skipping")
+        return data
+    payload = _build_payload(data)
+    print(f"SmartMoving Wilson payload: {payload}")
+    result = create_lead(payload, branch_id=branch_id)
+    if result:
+        data["smartmoving_wilson_lead_id"] = result
     return data

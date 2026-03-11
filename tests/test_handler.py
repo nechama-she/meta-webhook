@@ -1,4 +1,4 @@
-"""Pure unit tests - every external dependency is mocked."""
+﻿"""Pure unit tests - every external dependency is mocked."""
 
 import json
 import os
@@ -362,6 +362,23 @@ class TestSmartMovingAction:
         from pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("5551234567") == "5551234567"
 
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"wil-99"')
+    def test_send_to_smartmoving_wilson_uses_branch_id(self, mock_create):
+        with patch.dict(os.environ, {"SMARTMOVING_WILSON_BRANCH_ID": "wilson-branch-123"}):
+            from pipeline.actions.smartmoving import send_to_smartmoving_wilson
+            result = send_to_smartmoving_wilson(self._make_lead())
+            mock_create.assert_called_once()
+            assert mock_create.call_args[1]["branch_id"] == "wilson-branch-123"
+            assert result["smartmoving_wilson_lead_id"] == '"wil-99"'
+
+    @patch("pipeline.actions.smartmoving.create_lead")
+    def test_send_to_smartmoving_wilson_skips_when_not_configured(self, mock_create):
+        with patch.dict(os.environ, {"SMARTMOVING_WILSON_BRANCH_ID": ""}):
+            from pipeline.actions.smartmoving import send_to_smartmoving_wilson
+            result = send_to_smartmoving_wilson(self._make_lead())
+            mock_create.assert_not_called()
+            assert "smartmoving_wilson_lead_id" not in result
+
 
 class TestLeadPipeline:
 
@@ -371,16 +388,28 @@ class TestLeadPipeline:
             yield
 
     @patch("pipeline.actions.smartmoving.create_lead", return_value='"ok"')
-    def test_run_pipeline_calls_all_actions(self, mock_create):
+    def test_in_service_area_runs_smartmoving(self, mock_create):
         from pipeline import run_pipeline
-        lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567"}
+        lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
+                "pickup_zip": "10001"}  # not in NC/SC/GA/FL/TN → in_service_area=True
         run_pipeline("new_lead", lead)
         mock_create.assert_called_once()
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"ok"')
+    def test_out_of_service_area_skips_smartmoving(self, mock_create, mock_hm, mock_sheet):
+        from pipeline import run_pipeline
+        lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
+                "pickup_zip": "33028"}  # FL → in_service_area=False
+        run_pipeline("new_lead", lead)
+        mock_create.assert_not_called()
+        mock_hm.assert_called_once()
 
     @patch("pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
     def test_run_pipeline_handles_error(self, mock_create):
         from pipeline import run_pipeline
-        lead = {"leadgen_id": "L1"}
+        lead = {"leadgen_id": "L1", "pickup_zip": "10001"}
         # Should not raise — errors are caught per action
         run_pipeline("new_lead", lead)
 
@@ -389,6 +418,318 @@ class TestLeadPipeline:
         data = {"leadgen_id": "L1"}
         result = run_pipeline("nonexistent", data)
         assert result is data
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    def test_branch_sets_flag_on_data(self, mock_hm, mock_sheet):
+        from pipeline import run_pipeline
+        lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
+                "pickup_zip": "27510"}  # NC → not in service
+        result = run_pipeline("new_lead", lead)
+        assert result["in_service_area"] is False
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – check_pickup_zip action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestCheckPickupZip:
+
+    def test_nc_zip_not_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "27510"})["in_service_area"] is False
+
+    def test_sc_zip_not_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "29401"})["in_service_area"] is False
+
+    def test_ga_zip_not_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "30301"})["in_service_area"] is False
+
+    def test_ga_secondary_range(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "39901"})["in_service_area"] is False
+
+    def test_fl_zip_not_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "33028"})["in_service_area"] is False
+
+    def test_tn_zip_not_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "37201"})["in_service_area"] is False
+
+    def test_other_zip_in_service_area(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": "10001"})["in_service_area"] is True
+
+    def test_empty_zip(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({"pickup_zip": ""})["in_service_area"] is False
+
+    def test_missing_zip(self):
+        from pipeline.actions.check_pickup_zip import check_pickup_zip
+        assert check_pickup_zip({})["in_service_area"] is False
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – send_to_granot action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestSendToGranot:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        env = {**ENV_VARS,
+               "GRANOT_API_ID": "TESTID",
+               "GRANOT_MOVER_REF": "test@test.com",
+               "BORAT_LEADS_SPREADSHEET_ID": "fake-spreadsheet-id"}
+        with patch.dict(os.environ, env):
+            yield
+
+    def _make_lead(self, **overrides):
+        lead = {
+            "leadgen_id": "L100",
+            "full_name": "Jane Doe",
+            "phone_number": "+15551234567",
+            "email": "jane@example.com",
+            "pickup_zip": "33028",
+            "delivery_zip": "10001",
+            "move_date": "2026-04-01",
+        }
+        lead.update(overrides)
+        return lead
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK 12345")
+    def test_builds_correct_payload(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        result = send_to_granot(self._make_lead())
+        mock_send.assert_called_once()
+        payload = mock_send.call_args[0][0]
+        assert payload["firstname"] == "Jane"
+        assert payload["lastname"] == "Doe"
+        assert payload["email"] == "jane@example.com"
+        assert payload["phone1"] == "5551234567"
+        assert payload["oaddr"] == "33028"
+        assert payload["dzip"] == "10001"
+        assert payload["leadno"] == "L100"
+        assert payload["movedte"] == "2026-04-01"
+        assert payload["label"] == "Borat"
+        assert payload["notes"] == "Original Pickup: 33028, Original Delivery: 10001"
+        assert result["granot_ok"] is True
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="ERROR")
+    def test_non_ok_response_sets_false(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        result = send_to_granot(self._make_lead())
+        assert result["granot_ok"] is False
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value=None)
+    def test_none_response_sets_false(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        result = send_to_granot(self._make_lead())
+        assert result["granot_ok"] is False
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    def test_strips_plus1_from_phone(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        send_to_granot(self._make_lead(phone_number="+15559999999"))
+        assert mock_send.call_args[0][0]["phone1"] == "5559999999"
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    def test_strips_1_from_phone(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        send_to_granot(self._make_lead(phone_number="15559999999"))
+        assert mock_send.call_args[0][0]["phone1"] == "5559999999"
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    def test_single_name_uses_empty_lastname(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        send_to_granot(self._make_lead(full_name="Madonna"))
+        payload = mock_send.call_args[0][0]
+        assert payload["firstname"] == "Madonna"
+        assert payload["lastname"] == ""
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    @patch("pipeline.actions.send_to_granot.date")
+    def test_past_date_uses_tomorrow(self, mock_date, mock_send):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.fromisoformat = date.fromisoformat
+        from pipeline.actions.send_to_granot import send_to_granot
+        send_to_granot(self._make_lead(move_date="2026-03-10"))
+        assert mock_send.call_args[0][0]["movedte"] == "2026-03-11"
+
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
+    def test_returns_data_dict(self, mock_send):
+        from pipeline.actions.send_to_granot import send_to_granot
+        lead = self._make_lead()
+        result = send_to_granot(lead)
+        assert result is lead
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
+    @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK 99")
+    @patch("pipeline.actions.smartmoving.create_lead", return_value=None)
+    def test_pipeline_out_of_service_calls_granot(self, mock_sm, mock_hm, mock_sheet):
+        from pipeline import run_pipeline
+        lead = {"leadgen_id": "L1", "full_name": "Test User", "phone_number": "5551234567",
+                "pickup_zip": "33028", "delivery_zip": "10001"}  # FL → not in service
+        result = run_pipeline("new_lead", lead)
+        mock_hm.assert_called_once()
+        mock_sm.assert_not_called()
+        assert result["granot_ok"] is True
+        mock_sheet.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – log_to_borat_sheet action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestLogToBoratSheet:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        env = {**ENV_VARS,
+               "BORAT_LEADS_SPREADSHEET_ID": "fake-spreadsheet-id"}
+        with patch.dict(os.environ, env):
+            yield
+
+    def _make_lead(self, **overrides):
+        lead = {
+            "leadgen_id": "L100",
+            "full_name": "Jane Doe",
+            "phone_number": "(555) 123-4567",
+            "email": "jane@example.com",
+            "pickup_zip": "33028",
+            "delivery_zip": "10001",
+            "move_date": "2026-04-01",
+            "move_size": "2 Bedrooms",
+            "created_time": "2026-03-07T16:25:35+0000",
+            "granot_id": "OK 12345",
+        }
+        lead.update(overrides)
+        return lead
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
+    def test_appends_correct_row(self, mock_append):
+        from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
+        lead = self._make_lead()
+        result = log_to_borat_sheet(lead)
+        mock_append.assert_called_once_with(
+            "fake-spreadsheet-id",
+            "Leads",
+            [
+                "2026-03-07T16:25:35+0000",
+                "L100",
+                "OK 12345",
+                "Jane Doe",
+                "jane@example.com",
+                "(555) 123-4567",
+                "33028",
+                "10001",
+                "2026-04-01",
+                "2 Bedrooms",
+                "Yes",
+            ],
+        )
+        assert result["borat_sheet_logged"] is True
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=False)
+    def test_failure_sets_false(self, mock_append):
+        from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
+        result = log_to_borat_sheet(self._make_lead())
+        assert result["borat_sheet_logged"] is False
+
+    def test_skips_when_no_spreadsheet_id(self):
+        with patch.dict(os.environ, {"BORAT_LEADS_SPREADSHEET_ID": ""}):
+            from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
+            result = log_to_borat_sheet(self._make_lead())
+            assert "borat_sheet_logged" not in result
+
+    @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
+    def test_returns_data_dict(self, mock_append):
+        from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
+        lead = self._make_lead()
+        result = log_to_borat_sheet(lead)
+        assert result is lead
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – email_gorilla_notification action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestEmailGorillaNotification:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        env = {**ENV_VARS,
+               "HHG_NOTIFY_FROM": "Gorilla <sales@floridatopmovers.com>",
+               "HHG_NOTIFY_TO": "sales@floridatopmovers.com"}
+        with patch.dict(os.environ, env):
+            yield
+
+    @patch("mailer.ses.boto3")
+    def test_sends_email_with_correct_fields(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.send_email.return_value = {"MessageId": "abc"}
+
+        from pipeline.actions.send_lead_email import email_gorilla_notification
+        lead = {
+            "leadgen_id": "L100",
+            "full_name": "Roe Cole",
+            "phone_number": "(804) 433-5159",
+            "email": "roecole@gmail.com",
+            "pickup_zip": "23236",
+            "delivery_zip": "33028",
+            "move_date": "April 20",
+            "created_time": "2026-03-07T16:25:35+0000",
+        }
+        result = email_gorilla_notification(lead)
+        mock_client.send_email.assert_called_once()
+        kw = mock_client.send_email.call_args[1]
+        assert kw["Source"] == "Gorilla <sales@floridatopmovers.com>"
+        assert kw["Destination"]["ToAddresses"] == ["sales@floridatopmovers.com"]
+        assert kw["Message"]["Subject"]["Data"] == "New Lead on Facebook From Roe Cole, Gorilla"
+        body = kw["Message"]["Body"]["Text"]["Data"]
+        assert "Email: roecole@gmail.com" in body
+        assert "Full Name: Roe Cole" in body
+        assert "Phone Number: (804) 433-5159" in body
+        assert "Created Date: 2026-03-07T16:25:35+0000" in body
+        assert "Pickup Zip: 23236" in body
+        assert "Delivery Zip: 33028" in body
+        assert "Move Date: April 20" in body
+        assert result is lead
+
+    @patch("mailer.ses.boto3")
+    def test_sends_to_multiple_recipients(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.send_email.return_value = {"MessageId": "abc"}
+
+        with patch.dict(os.environ, {"HHG_NOTIFY_TO": "a@test.com,b@test.com"}):
+            from pipeline.actions.send_lead_email import email_gorilla_notification
+            email_gorilla_notification({"full_name": "Test"})
+            kw = mock_client.send_email.call_args[1]
+            assert kw["Destination"]["ToAddresses"] == ["a@test.com", "b@test.com"]
+
+    @patch("mailer.ses.boto3")
+    def test_skips_when_not_configured(self, mock_boto3):
+        with patch.dict(os.environ, {"HHG_NOTIFY_FROM": "", "HHG_NOTIFY_TO": ""}):
+            from pipeline.actions.send_lead_email import email_gorilla_notification
+            result = email_gorilla_notification({"full_name": "Test"})
+            mock_boto3.client.assert_not_called()
+            assert result == {"full_name": "Test"}
+
+    @patch("mailer.ses.boto3")
+    def test_returns_data_unchanged(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+        mock_client.send_email.return_value = {"MessageId": "abc"}
+
+        from pipeline.actions.send_lead_email import email_gorilla_notification
+        lead = {"leadgen_id": "L1", "full_name": "Test User"}
+        result = email_gorilla_notification(lead)
+        assert result is lead
 
 
 # ═══════════════════════════════════════════════════════════════════════
