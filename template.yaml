@@ -65,6 +65,11 @@ Resources:
             TableName: '*'
         - SQSSendMessagePolicy:
             QueueName: !GetAtt LeadPollDLQ.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource: '*'
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt LeadPollDLQ.Arn
@@ -76,7 +81,14 @@ Resources:
           PAGE_IDS: '{{resolve:ssm:/meta-webhook/PAGE_IDS}}'
           LEAD_POLL_LOOKBACK_MINUTES: '30'
           SMARTMOVING_PROVIDER_KEY: '{{resolve:ssm:/meta-webhook/SMARTMOVING_PROVIDER_KEY}}'
-          SMARTMOVING_BRANCH_ID: '{{resolve:ssm:/meta-webhook/SMARTMOVING_BRANCH_ID}}'
+          SMARTMOVING_GORILLA_BRANCH_ID: '{{resolve:ssm:/meta-webhook/SMARTMOVING_GORILLA_BRANCH_ID}}'
+          SMARTMOVING_WILSON_BRANCH_ID: '{{resolve:ssm:/meta-webhook/SMARTMOVING_WILSON_BRANCH_ID}}'
+          HHG_NOTIFY_FROM: '{{resolve:ssm:/meta-webhook/HHG_NOTIFY_FROM}}'
+          HHG_NOTIFY_TO: '{{resolve:ssm:/meta-webhook/HHG_NOTIFY_TO}}'
+          GRANOT_API_ID: '{{resolve:ssm:/meta-webhook/GRANOT_API_ID}}'
+          GRANOT_MOVER_REF: '{{resolve:ssm:/meta-webhook/GRANOT_MOVER_REF}}'
+          GOOGLE_SHEETS_CREDENTIALS: '{{resolve:ssm:/meta-webhook/GOOGLE_SHEETS_CREDENTIALS}}'
+          BORAT_LEADS_SPREADSHEET_ID: '{{resolve:ssm:/meta-webhook/BORAT_LEADS_SPREADSHEET_ID}}'
       Events:
         LeadPollSchedule:
           Type: ScheduleV2

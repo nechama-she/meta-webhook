@@ -1,10 +1,26 @@
 """Pipeline dispatcher – look up a pipeline by name and execute its actions."""
 
+from pipeline.branch import Branch
 from pipeline.pipelines import new_lead
 
 _REGISTRY: dict[str, list] = {
     "new_lead": new_lead.ACTIONS,
 }
+
+
+def _run_actions(name: str, actions: list, data: dict) -> dict:
+    """Execute a list of actions, handling Branch nodes."""
+    for action in actions:
+        try:
+            if isinstance(action, Branch):
+                branch_actions = action.resolve(data)
+                data = _run_actions(name, branch_actions, data)
+            else:
+                data = action(data)
+        except Exception as exc:
+            action_name = getattr(action, "__name__", str(action))
+            print(f"[pipeline:{name}] action {action_name} failed: {exc}")
+    return data
 
 
 def run_pipeline(name: str, data: dict) -> dict:
@@ -18,9 +34,4 @@ def run_pipeline(name: str, data: dict) -> dict:
         print(f"Pipeline '{name}' not found – skipping")
         return data
 
-    for action in actions:
-        try:
-            data = action(data)
-        except Exception as exc:
-            print(f"[pipeline:{name}] action {action.__name__} failed: {exc}")
-    return data
+    return _run_actions(name, actions, data)
