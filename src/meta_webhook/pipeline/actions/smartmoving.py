@@ -1,4 +1,4 @@
-"""Pipeline action: send a new lead to SmartMoving CRM."""
+"""Action: send a new lead to SmartMoving CRM."""
 
 from meta_webhook.clients.smartmoving_client import create_lead
 
@@ -20,19 +20,19 @@ def _clean_phone(phone: str) -> str:
     return phone
 
 
-def send_to_smartmoving(lead: dict) -> str | None:
+def send_to_smartmoving(data: dict) -> dict:
     """Transform a lead dict and POST it to SmartMoving.
 
-    Returns the SmartMoving lead ID or None on failure.
+    Returns the data dict (possibly enriched with smartmoving_lead_id).
     """
-    phone = _clean_phone(lead.get("phone_number", ""))
-    full_name = lead.get("full_name", "")
-    email = lead.get("email", "")
-    ozip = lead.get("pickup_zip", lead.get("ozip", ""))
-    dzip = lead.get("delivery_zip", lead.get("dzip", ""))
-    move_date = lead.get("move_date", lead.get("gptMoveDate", ""))
-    move_size = lead.get("move_size", lead.get("moveSize", "Room or Less"))
-    campaign = lead.get("campaign", "")
+    phone = _clean_phone(data.get("phone_number", ""))
+    full_name = data.get("full_name", "")
+    email = data.get("email", "")
+    ozip = data.get("pickup_zip", data.get("ozip", ""))
+    dzip = data.get("delivery_zip", data.get("dzip", ""))
+    move_date = data.get("move_date", "")
+    move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
+    campaign = data.get("campaign", "")
 
     message = (
         f"pickup {ozip}\n"
@@ -44,14 +44,16 @@ def send_to_smartmoving(lead: dict) -> str | None:
         f"phone {phone}"
     )
 
+    move_date_raw = data.get("move_date_raw", move_date)
+
     note = (
         f"email: {email}. "
         f"pickup:{ozip}. "
         f"delivery:{dzip}. "
-        f"moveDate:{move_date}. "
+        f"moveDate:{move_date_raw}. "
         f"campaign:{campaign}. "
-        f"adset:{lead.get('adset', '')}. "
-        f"ad:{lead.get('ad', '')} "
+        f"adset:{data.get('adset', '')}. "
+        f"ad:{data.get('ad', '')} "
         f"message: {message}"
     )
 
@@ -66,10 +68,13 @@ def send_to_smartmoving(lead: dict) -> str | None:
         "moveDate": move_date,
         "notes": note,
         "referralSource": referral_source,
-        "leadno": lead.get("leadgen_id", ""),
+        "leadno": data.get("leadgen_id", ""),
         "serviceType": "Moving",
         "moveSize": move_size,
     }
 
     print(f"SmartMoving payload: {payload}")
-    return create_lead(payload)
+    result = create_lead(payload)
+    if result:
+        data["smartmoving_lead_id"] = result
+    return data

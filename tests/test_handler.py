@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+from datetime import date
 from unittest.mock import patch, MagicMock, call
 
 import pytest
@@ -211,7 +212,7 @@ class TestLeadPollService:
              patch("meta_webhook.services.lead_poll_service.PAGE_IDS", ["p1", "p2"]):
             yield
 
-    @patch("meta_webhook.services.lead_poll_service.run_lead_actions")
+    @patch("meta_webhook.services.lead_poll_service.run_pipeline")
     @patch("meta_webhook.services.lead_poll_service.save_lead_if_new", return_value=True)
     @patch("meta_webhook.services.lead_poll_service.get_form_leads", return_value=[
         {
@@ -321,9 +322,9 @@ class TestSmartMovingAction:
         lead.update(overrides)
         return lead
 
-    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"abc-123"')
+    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"abc-123"')
     def test_send_to_smartmoving_builds_payload(self, mock_create):
-        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
         result = send_to_smartmoving(self._make_lead())
         mock_create.assert_called_once()
         payload = mock_create.call_args[0][0]
@@ -333,32 +334,32 @@ class TestSmartMovingAction:
         assert payload["originZip"] == "20001"
         assert payload["destinationZip"] == "10001"
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Local"
-        assert result == '"abc-123"'
+        assert result["smartmoving_lead_id"] == '"abc-123"'
 
-    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"xyz"')
+    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_nationwide_referral(self, mock_create):
-        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
         send_to_smartmoving(self._make_lead(campaign="Northeast-Midwest"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Nationwide"
 
-    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"xyz"')
+    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_fl_ga_nc_referral(self, mock_create):
-        from meta_webhook.pipeline.smartmoving import send_to_smartmoving
+        from meta_webhook.pipeline.actions.smartmoving import send_to_smartmoving
         send_to_smartmoving(self._make_lead(campaign="FL-GA-NC"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-FL-GA-NC"
 
     def test_clean_phone_strips_plus1(self):
-        from meta_webhook.pipeline.smartmoving import _clean_phone
+        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("+15551234567") == "5551234567"
 
     def test_clean_phone_strips_1(self):
-        from meta_webhook.pipeline.smartmoving import _clean_phone
+        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("15551234567") == "5551234567"
 
     def test_clean_phone_leaves_10_digit(self):
-        from meta_webhook.pipeline.smartmoving import _clean_phone
+        from meta_webhook.pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("5551234567") == "5551234567"
 
 
@@ -369,19 +370,163 @@ class TestLeadPipeline:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
-    @patch("meta_webhook.pipeline.smartmoving.create_lead", return_value='"ok"')
-    def test_run_lead_actions_calls_all_actions(self, mock_create):
-        from meta_webhook.pipeline import run_lead_actions
+    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", return_value='"ok"')
+    def test_run_pipeline_calls_all_actions(self, mock_create):
+        from meta_webhook.pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567"}
-        run_lead_actions(lead)
+        run_pipeline("new_lead", lead)
         mock_create.assert_called_once()
 
-    @patch("meta_webhook.pipeline.smartmoving.create_lead", side_effect=Exception("API down"))
-    def test_run_lead_actions_handles_error(self, mock_create):
-        from meta_webhook.pipeline import run_lead_actions
+    @patch("meta_webhook.pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
+    def test_run_pipeline_handles_error(self, mock_create):
+        from meta_webhook.pipeline import run_pipeline
         lead = {"leadgen_id": "L1"}
         # Should not raise — errors are caught per action
-        run_lead_actions(lead)
+        run_pipeline("new_lead", lead)
+
+    def test_run_pipeline_unknown_name_returns_data(self):
+        from meta_webhook.pipeline import run_pipeline
+        data = {"leadgen_id": "L1"}
+        result = run_pipeline("nonexistent", data)
+        assert result is data
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pipeline – date parser action
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestDateParserAction:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_iso_date_passthrough(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "2026-04-20"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-04-20"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_slash_date(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "4/20"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-04-20"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_slash_date_with_year(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "4/20/27"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2027-04-20"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_month_name_and_day(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "April 20"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-04-20"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_abbreviated_month(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "Apr 20"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-04-20"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_month_only_uses_last_day(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "april"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-04-30"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_past_date_bumps_to_next_year(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "1/15"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2027-01-15"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_empty_move_date_uses_fallback(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": ""}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-03-24"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=("2026-05-01", "Interpreted 'asap' as May 1"))
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_unparseable_text_falls_back_to_ai(self, mock_date, mock_parse):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "asap"}
+        result = format_move_date(data)
+        mock_parse.assert_called_once_with("asap", "2026-03-10")
+        assert result["move_date"] == "2026-05-01"
+        assert result["move_date_explanation"] == "Interpreted 'asap' as May 1"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=(None, None))
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_unparseable_text_ai_fails_uses_fallback(self, mock_date, mock_parse):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "asap"}
+        result = format_move_date(data)
+        mock_parse.assert_called_once()
+        assert result["move_date"] == "2026-03-24"
+        assert result["move_date_explanation"] == "AI unavailable, used fallback"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.parse_date", return_value=("2026-07-20", "next Tuesday in July"))
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_ai_date_sets_explanation(self, mock_date, mock_parse):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "next tuesday in july"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-07-20"
+        assert result["move_date_explanation"] == "next Tuesday in July"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_when_is_the_move_field(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"when_is_the_move": "June 15"}
+        result = format_move_date(data)
+        assert result["move_date"] == "2026-06-15"
+
+    @patch("meta_webhook.pipeline.actions.date_parser.date")
+    def test_returns_data_dict(self, mock_date):
+        mock_date.today.return_value = date(2026, 3, 10)
+        mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+        from meta_webhook.pipeline.actions.date_parser import format_move_date
+        data = {"move_date": "4/20", "full_name": "Jane"}
+        result = format_move_date(data)
+        assert result is data
+        assert result["full_name"] == "Jane"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -553,3 +698,25 @@ class TestOpenAIClient:
     def test_generate_reply(self, mock_cc):
         from meta_webhook.clients.openai_client import generate_reply
         assert generate_reply([{"role": "user", "content": "hi"}]) == "Hello!"
+
+    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Date: 2026-05-15\nExplanation: Mid-May, closest upcoming")
+    def test_parse_date_returns_date_and_explanation(self, mock_cc):
+        from meta_webhook.clients.openai_client import parse_date
+        iso_date, explanation = parse_date("mid may", "2026-03-10")
+        assert iso_date == "2026-05-15"
+        assert explanation == "Mid-May, closest upcoming"
+        mock_cc.assert_called_once()
+
+    @patch("meta_webhook.clients.openai_client.chat_completion", return_value=None)
+    def test_parse_date_returns_none_on_failure(self, mock_cc):
+        from meta_webhook.clients.openai_client import parse_date
+        iso_date, explanation = parse_date("gibberish", "2026-03-10")
+        assert iso_date is None
+        assert explanation is None
+
+    @patch("meta_webhook.clients.openai_client.chat_completion", return_value="Date: 2026-03-24\nExplanation: No valid date found, used fallback (today + 14 days)")
+    def test_parse_date_fallback_response(self, mock_cc):
+        from meta_webhook.clients.openai_client import parse_date
+        iso_date, explanation = parse_date("asap", "2026-03-10")
+        assert iso_date == "2026-03-24"
+        assert "fallback" in explanation.lower()

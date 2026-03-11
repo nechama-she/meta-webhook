@@ -95,3 +95,49 @@ def generate_reply(messages: list[dict]) -> str | None:
     """Generate a conversational reply given prior *messages*."""
     print(f"Generating reply from {len(messages)} messages")
     return chat_completion(messages, max_tokens=200, timeout=15)
+
+
+def parse_date(text: str, today_str: str) -> tuple[str | None, str | None]:
+    """Ask OpenAI to extract a date from natural language.
+
+    Returns ``(iso_date, explanation)`` or ``(None, None)`` on failure.
+    """
+    system_prompt = (
+        "You extract a date from natural language text and produce two responses:\n"
+        "Date: exactly one ISO-formatted date (YYYY-MM-DD).\n"
+        "Explanation: a short description of how that date was determined.\n\n"
+        "You perform no other actions and add no extra content beyond these two responses.\n\n"
+        f"Today's date is {today_str}.\n\n"
+        "When interpreting dates without a year, assume the closest upcoming occurrence: "
+        "if the specified month/day has already passed in the current year, use the next year instead.\n"
+        "If only a month is provided (no day or year), use the last day of that month in the "
+        "closest upcoming year (if the month has already passed this year, use that month in the next year).\n"
+        "Never return a past date. Always choose a date that is today or in the future.\n\n"
+        "If the input cannot be interpreted as a valid date, return the date exactly 14 days after "
+        f"today ({today_str}), and in the explanation, state that no valid date was found so "
+        "the fallback (today + 14 days) was used.\n\n"
+        "Always output both parts clearly labeled as:\n"
+        "Date: YYYY-MM-DD\n"
+        "Explanation: <reasoning>"
+    )
+    print(f"OpenAI parse_date: '{text}'")
+    result = chat_completion(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ],
+        max_tokens=100,
+        timeout=10,
+    )
+    if not result:
+        return None, None
+
+    iso_date = None
+    explanation = None
+    for line in result.splitlines():
+        line = line.strip()
+        if line.lower().startswith("date:"):
+            iso_date = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("explanation:"):
+            explanation = line.split(":", 1)[1].strip()
+    return iso_date, explanation
