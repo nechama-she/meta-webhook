@@ -39,7 +39,7 @@ def _ensure_future(d: date, reference: date) -> date:
 
 def format_move_date(data: dict) -> dict:
     """Parse ``move_date`` field into YYYY-MM-DD. Modifies data in place."""
-    raw = (data.get("move_date") or data.get("when_is_the_move") or "").strip()
+    raw = (data.get("move_date") or data.get("when_is_the_move?") or data.get("when_is_the_move") or "").strip()
     data["move_date_raw"] = raw
     if not raw:
         data["move_date"] = _fallback()
