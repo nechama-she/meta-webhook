@@ -1,4 +1,4 @@
-"""Pipeline: new_lead – actions to run when a fresh lead arrives."""
+"""Pipeline: new_lead - actions to run when a fresh lead arrives."""
 
 from pipeline.branch import Branch
 from pipeline.actions.check_pickup_zip import check_pickup_zip

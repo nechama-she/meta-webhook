@@ -5,13 +5,58 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE
+from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE
 
 _dynamo = boto3.resource("dynamodb")
+_client = boto3.client("dynamodb")
+
+
+def _ensure_table(name: str, key_schema: list, attr_defs: list) -> None:
+    """Create a DynamoDB table if it doesn't already exist."""
+    existing = _client.list_tables()["TableNames"]
+    if name in existing:
+        return
+    _client.create_table(
+        TableName=name,
+        KeySchema=key_schema,
+        AttributeDefinitions=attr_defs,
+        BillingMode="PAY_PER_REQUEST",
+    )
+    _client.get_waiter("table_exists").wait(TableName=name)
+    print(f"Created DynamoDB table '{name}'")
+
+
+_ensure_table(
+    CACHE_TABLE,
+    [{"AttributeName": "cache_key", "KeyType": "HASH"}],
+    [{"AttributeName": "cache_key", "AttributeType": "S"}],
+)
 
 _events_table = _dynamo.Table(EVENTS_TABLE)
 _conversations_table = _dynamo.Table(CONVERSATIONS_TABLE)
 _leads_table = _dynamo.Table(LEADS_TABLE)
+_cache_table = _dynamo.Table(CACHE_TABLE)
+
+
+# ── Cache ─────────────────────────────────────────────────────────────
+
+def cache_get(key: str) -> str | None:
+    """Return the cached value for *key*, or None if not found."""
+    try:
+        resp = _cache_table.get_item(Key={"cache_key": key})
+        item = resp.get("Item")
+        return item["value"] if item else None
+    except Exception as exc:
+        print(f"Cache get error for '{key}': {repr(exc)}")
+        return None
+
+
+def cache_set(key: str, value: str) -> None:
+    """Store a value in the cache."""
+    try:
+        _cache_table.put_item(Item={"cache_key": key, "value": value})
+    except Exception as exc:
+        print(f"Cache set error for '{key}': {repr(exc)}")
 
 
 # ── Generic event persistence ────────────────────────────────────────
