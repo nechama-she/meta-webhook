@@ -63,7 +63,7 @@ def _pattern_reply(text: str) -> str | None:
 
 # ── Core handler ──────────────────────────────────────────────────────
 
-def handle_echo(messaging: dict, entry: dict) -> None:
+def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> None:
     """Process a page-echo (admin/bot outbound) message."""
     message_data = messaging.get("message") or {}
     text = (message_data.get("text") or "").strip()
@@ -80,14 +80,14 @@ def handle_echo(messaging: dict, entry: dict) -> None:
         user_id=recipient,
         message_id=mid,
         text=text,
-        platform="messenger",
+        platform=platform,
         page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="sales",
     )
 
 
-def handle_user_message(messaging: dict, entry: dict) -> None:
+def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger") -> None:
     """Process an inbound user message - save, classify, reply."""
     sender_id = messaging["sender"]["id"]
     message_data = messaging.get("message") or {}
@@ -99,7 +99,7 @@ def handle_user_message(messaging: dict, entry: dict) -> None:
         return
 
     page_id = entry.get("id")
-    print(f"\n══ User message from {sender_id} (page {page_id}) ══")
+    print(f"\n══ User message from {sender_id} (page {page_id}) [{platform}] ══")
     print(f"Text: {text!r}")
 
     # 1. Persist the user message
@@ -108,7 +108,7 @@ def handle_user_message(messaging: dict, entry: dict) -> None:
         user_id=sender_id,
         message_id=mid,
         text=text,
-        platform="messenger",
+        platform=platform,
         page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="user",

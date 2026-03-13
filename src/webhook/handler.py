@@ -32,11 +32,14 @@ def lambda_handler(event, context):
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")
 
+            object_type = body.get("object", "page")
+            platform = "instagram" if object_type == "instagram" else "messenger"
+
             for entry in entries:
                 entry_id = entry.get("id", "?")
-                print(f"── Entry {entry_id} ──")
+                print(f"── Entry {entry_id} ({platform}) ──")
                 _handle_changes(entry)
-                _handle_messaging(entry)
+                _handle_messaging(entry, platform)
 
         except Exception as exc:
             print("Handler error:", repr(exc))
@@ -64,7 +67,7 @@ def _handle_changes(entry: dict) -> None:
             process_leadgen(entry, value)
 
 
-def _handle_messaging(entry: dict) -> None:
+def _handle_messaging(entry: dict, platform: str = "messenger") -> None:
     """Dispatch ``messaging`` items to the messenger service."""
     for messaging in entry.get("messaging", []):
         message_data = messaging.get("message") or {}
@@ -79,6 +82,6 @@ def _handle_messaging(entry: dict) -> None:
         print(f"Messaging: mid={mid}, echo={is_echo}, sender={sender}, recipient={recipient}, text={text!r}")
 
         if is_echo:
-            handle_echo(messaging, entry)
+            handle_echo(messaging, entry, platform)
         else:
-            handle_user_message(messaging, entry)
+            handle_user_message(messaging, entry, platform)
