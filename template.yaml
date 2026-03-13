@@ -30,6 +30,13 @@ Resources:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
             TableName: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:ListTables
+                - dynamodb:CreateTable
+                - dynamodb:DescribeTable
+              Resource: '*'
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -63,6 +70,13 @@ Resources:
         - AWSLambdaBasicExecutionRole
         - DynamoDBCrudPolicy:
             TableName: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:ListTables
+                - dynamodb:CreateTable
+                - dynamodb:DescribeTable
+              Resource: '*'
         - SQSSendMessagePolicy:
             QueueName: !GetAtt LeadPollDLQ.QueueName
         - Statement:

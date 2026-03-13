@@ -13,17 +13,20 @@ _client = boto3.client("dynamodb")
 
 def _ensure_table(name: str, key_schema: list, attr_defs: list) -> None:
     """Create a DynamoDB table if it doesn't already exist."""
-    existing = _client.list_tables()["TableNames"]
-    if name in existing:
-        return
-    _client.create_table(
-        TableName=name,
-        KeySchema=key_schema,
-        AttributeDefinitions=attr_defs,
-        BillingMode="PAY_PER_REQUEST",
-    )
-    _client.get_waiter("table_exists").wait(TableName=name)
-    print(f"Created DynamoDB table '{name}'")
+    try:
+        existing = _client.list_tables()["TableNames"]
+        if name in existing:
+            return
+        _client.create_table(
+            TableName=name,
+            KeySchema=key_schema,
+            AttributeDefinitions=attr_defs,
+            BillingMode="PAY_PER_REQUEST",
+        )
+        _client.get_waiter("table_exists").wait(TableName=name)
+        print(f"Created DynamoDB table '{name}'")
+    except Exception as exc:
+        print(f"_ensure_table('{name}'): {repr(exc)}")
 
 
 _ensure_table(
