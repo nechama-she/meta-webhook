@@ -6,6 +6,7 @@ import os
 from services.comment_service import process_comment
 from services.lead_service import process_leadgen
 from services.messenger_service import handle_echo, handle_user_message
+from services.aircall_service import handle_aircall_message
 
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 
@@ -23,11 +24,16 @@ def lambda_handler(event, context):
             return {"statusCode": 200, "body": q.get("hub.challenge", "")}
         return {"statusCode": 403, "body": "Forbidden"}
 
-    # ── POST: Meta webhook events ─────────────────────────────────────
+    # ── POST: webhook events ────────────────────────────────────────────
     if method == "POST":
         try:
             body = json.loads(event.get("body") or "{}")
             print("Event:", json.dumps(body))
+
+            # Aircall events have "resource", Meta events have "object"
+            if body.get("resource") == "message":
+                handle_aircall_message(body)
+                return {"statusCode": 200, "body": "OK"}
 
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")

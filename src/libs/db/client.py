@@ -5,7 +5,7 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE
+from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE
 
 _dynamo = boto3.resource("dynamodb")
 _client = boto3.client("dynamodb")
@@ -35,10 +35,23 @@ _ensure_table(
     [{"AttributeName": "cache_key", "AttributeType": "S"}],
 )
 
+_ensure_table(
+    SMS_MESSAGES_TABLE,
+    [
+        {"AttributeName": "phone_number", "KeyType": "HASH"},
+        {"AttributeName": "timestamp", "KeyType": "RANGE"},
+    ],
+    [
+        {"AttributeName": "phone_number", "AttributeType": "S"},
+        {"AttributeName": "timestamp", "AttributeType": "N"},
+    ],
+)
+
 _events_table = _dynamo.Table(EVENTS_TABLE)
 _conversations_table = _dynamo.Table(CONVERSATIONS_TABLE)
 _leads_table = _dynamo.Table(LEADS_TABLE)
 _cache_table = _dynamo.Table(CACHE_TABLE)
+_sms_table = _dynamo.Table(SMS_MESSAGES_TABLE)
 
 
 # ── Cache ─────────────────────────────────────────────────────────────
@@ -173,3 +186,51 @@ def replace_summary(
         print(f"Summary updated for user {user_id}")
     except Exception as exc:
         print("DynamoDB transaction error:", repr(exc))
+
+
+# ── SMS Messages ──────────────────────────────────────────────────────
+
+def save_sms_message(
+    *,
+    phone_number: str,
+    timestamp: int,
+    message_id: str,
+    text: str,
+    direction: str,
+    company_number: str,
+    company_name: str,
+    number_id: int | None = None,
+    sales_name: str | None = None,
+) -> None:
+    """Persist an Aircall SMS message."""
+    item: dict = {
+        "phone_number": phone_number,
+        "timestamp": timestamp,
+        "message_id": message_id,
+        "text": text,
+        "direction": direction,
+        "company_number": company_number,
+        "company_name": company_name,
+    }
+    if number_id is not None:
+        item["number_id"] = number_id
+    if sales_name:
+        item["sales_name"] = sales_name
+    try:
+        _sms_table.put_item(Item=item)
+        print(f"SMS saved: {direction} {phone_number}")
+    except Exception as exc:
+        print(f"SMS save error: {repr(exc)}")
+
+
+def get_sms_messages(phone_number: str) -> list[dict]:
+    """Return all SMS messages for a phone number, oldest first."""
+    try:
+        response = _sms_table.query(
+            KeyConditionExpression=Key("phone_number").eq(phone_number),
+            ScanIndexForward=True,
+        )
+        return response.get("Items", [])
+    except Exception as exc:
+        print(f"SMS query error: {repr(exc)}")
+        return []
