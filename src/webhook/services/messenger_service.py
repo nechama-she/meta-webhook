@@ -15,7 +15,7 @@ from services.conversation_service import (
 )
 
 ENABLE_OPENAI_ANSWER = (
-    os.environ.get("ENABLE_OPENAI_ANSWER", "true").lower() == "true"
+    os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
 )
 
 

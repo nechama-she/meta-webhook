@@ -46,6 +46,8 @@ Resources:
           ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
+          AIRCALL_API_ID: '{{resolve:ssm:/meta-webhook/AIRCALL_API_ID}}'
+          AIRCALL_API_TOKEN: '{{resolve:ssm:/meta-webhook/AIRCALL_API_TOKEN}}'
 
   # ── Lead polling (pull-based) ──────────────────────────────────────
 
