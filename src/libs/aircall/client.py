@@ -18,12 +18,17 @@ def _auth_header() -> str:
 
 
 def send_sms(number_id: int, to: str, text: str) -> str | None:
-    """Send an SMS via Aircall.
+    """Send an SMS via Aircall (agent conversation endpoint).
 
+    Messages appear in the Aircall app and trigger webhooks.
     Returns the message id on success, None on failure.
     """
-    url = f"{_BASE_URL}/numbers/{number_id}/messages"
-    body = json.dumps({"to": to, "body": text}).encode("utf-8")
+    url = f"{_BASE_URL}/messages/send-in-agent-conversation"
+    body = json.dumps({
+        "number_id": number_id,
+        "to": to,
+        "body": text,
+    }).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=body,
