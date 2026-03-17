@@ -23,9 +23,8 @@ def send_sms(number_id: int, to: str, text: str) -> str | None:
     Messages appear in the Aircall app and trigger webhooks.
     Returns the message id on success, None on failure.
     """
-    url = f"{_BASE_URL}/messages/send-in-agent-conversation"
+    url = f"{_BASE_URL}/numbers/{number_id}/messages/send-in-agent-conversation"
     body = json.dumps({
-        "number_id": number_id,
         "to": to,
         "body": text,
     }).encode("utf-8")
