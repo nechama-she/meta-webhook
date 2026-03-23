@@ -48,9 +48,15 @@ def classify_sentiment(text: str) -> str:
     """Return ``'Bad'`` or ``'Good'`` for *text*."""
     print(f"Classifying sentiment for: {text!r}")
     system_prompt = (
-        "Classify the following text as 'Bad' if it expresses any negative "
-        "sentiment, complaint, or dissatisfaction. Classify as 'Good' if it "
-        "is positive or neutral.\nReply with only one word: Good or Bad."
+        "You are a comment moderator for a moving company's social media page. "
+        "Classify the following comment as 'Bad' ONLY if you are highly confident "
+        "it is defamatory, attacks the company's reputation, or contains hate speech, "
+        "threats, or abusive language directed at the company or its staff. "
+        "Examples of 'Bad': 'horrible company', 'worst movers ever', 'they broke everything', 'scam company'. "
+        "When in doubt, always classify as 'Good'. "
+        "Classify as 'Good' for everything else: spam, ads, quote requests, "
+        "questions, positive feedback, neutral comments, or any irrelevant content. "
+        "Reply with only one word: Good or Bad."
     )
     result = chat_completion(
         [
