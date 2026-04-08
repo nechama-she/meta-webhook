@@ -1,6 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+  RdsSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for RDS credentials
+    Default: arn:aws:secretsmanager:us-east-1:381492064416:secret:rds!db-959f86c1-2259-4cd5-a7ba-84aad184418e-1CXxCC
+  RdsHost:
+    Type: String
+    Description: RDS hostname
+    Default: moving-crm-dev.cez2oc2cg2qj.us-east-1.rds.amazonaws.com
+  RdsDbName:
+    Type: String
+    Description: RDS database name
+    Default: moving_crm
+
 Resources:
 
   # ── Shared Lambda Layer ────────────────────────────────────────────
@@ -37,6 +54,11 @@ Resources:
                 - dynamodb:CreateTable
                 - dynamodb:DescribeTable
               Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: '*'
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -48,6 +70,10 @@ Resources:
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
           AIRCALL_API_ID: '{{resolve:ssm:/meta-webhook/AIRCALL_API_ID}}'
           AIRCALL_API_TOKEN: '{{resolve:ssm:/meta-webhook/AIRCALL_API_TOKEN}}'
+          SMARTMOVING_API_KEY: '{{resolve:ssm:/moving-crm/dev/SMARTMOVING_API_KEY}}'
+          RDS_SECRET_ARN: !Ref RdsSecretArn
+          RDS_HOST: !Ref RdsHost
+          RDS_DB_NAME: !Ref RdsDbName
 
   # ── Lead polling (pull-based) ──────────────────────────────────────
 

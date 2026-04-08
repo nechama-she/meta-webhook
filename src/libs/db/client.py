@@ -109,6 +109,38 @@ def save_lead_if_new(item: dict) -> bool:
         return False
 
 
+_LEAD_UPDATE_FIELDS = ("smartmoving_lead_id", "smartmoving_wilson_lead_id", "granot_id")
+
+
+def update_lead(item: dict) -> None:
+    """Update an existing lead with fields added by the pipeline."""
+    leadgen_id = item.get("leadgen_id")
+    if not leadgen_id:
+        return
+    updates = {k: item[k] for k in _LEAD_UPDATE_FIELDS if k in item}
+    if not updates:
+        return
+    expr_parts = []
+    names = {}
+    values = {}
+    for i, (k, v) in enumerate(updates.items()):
+        alias = f"#f{i}"
+        val_alias = f":v{i}"
+        expr_parts.append(f"{alias} = {val_alias}")
+        names[alias] = k
+        values[val_alias] = v
+    try:
+        _leads_table.update_item(
+            Key={"leadgen_id": leadgen_id},
+            UpdateExpression="SET " + ", ".join(expr_parts),
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+        print(f"Lead {leadgen_id} updated: {list(updates.keys())}")
+    except Exception as exc:
+        print(f"Lead update error: {repr(exc)}")
+
+
 # ── Conversations ─────────────────────────────────────────────────────
 
 def get_conversation(user_id: str) -> list[dict]:
