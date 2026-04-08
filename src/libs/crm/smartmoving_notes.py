@@ -28,7 +28,8 @@ def add_note(opportunity_id: str, note: str) -> bool:
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            print(f"SmartMoving note added to {opportunity_id}: {resp.status}")
+            result = resp.read().decode("utf-8")
+            print(f"SmartMoving note added to {opportunity_id}: {resp.status} {result}")
             return True
     except urllib.error.HTTPError as exc:
         print(f"SmartMoving note HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
