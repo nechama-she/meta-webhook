@@ -135,6 +135,7 @@ Resources:
           GRANOT_API_ID: '{{resolve:ssm:/meta-webhook/GRANOT_API_ID}}'
           GRANOT_MOVER_REF: '{{resolve:ssm:/meta-webhook/GRANOT_MOVER_REF}}'
           BORAT_LEADS_SPREADSHEET_ID: '{{resolve:ssm:/meta-webhook/BORAT_LEADS_SPREADSHEET_ID}}'
+          MOVING_CRM_API_SECRET: '{{resolve:ssm:/meta-webhook/MOVING_CRM_API_SECRET}}'
       Events:
         LeadPollSchedule:
           Type: ScheduleV2
