@@ -88,7 +88,7 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
     )
 
     # Forward outbound message as a note to SmartMoving
-    run_pipeline("messenger_message", {"sender_id": recipient, "text": text})
+    run_pipeline("messenger_message", {"sender_id": recipient, "text": text, "direction": "sales"})
 
 
 def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger") -> None:
@@ -119,7 +119,7 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     )
 
     # 1b. Run messenger_message pipeline (SmartMoving note, etc.)
-    run_pipeline("messenger_message", {"sender_id": sender_id, "text": text})
+    run_pipeline("messenger_message", {"sender_id": sender_id, "text": text, "direction": "user"})
 
     # 2. Load & log full conversation
     print("Step 2: Fetching conversation history...")
