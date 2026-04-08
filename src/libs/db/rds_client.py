@@ -4,7 +4,6 @@ import json
 import os
 
 import boto3
-import psycopg2
 
 _secret_arn = os.environ.get("RDS_SECRET_ARN", "")
 _db_host = os.environ.get("RDS_HOST", "")
@@ -22,6 +21,8 @@ def _get_credentials() -> dict:
 
 def _get_connection():
     """Return a reusable psycopg2 connection (created on first call)."""
+    import psycopg2
+
     global _conn
     if _conn is None or _conn.closed:
         creds = _get_credentials()
