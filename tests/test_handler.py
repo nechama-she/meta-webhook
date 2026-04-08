@@ -613,6 +613,7 @@ class TestLogToBoratSheet:
     def test_appends_correct_row(self, mock_append):
         from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
         lead = self._make_lead()
+        expected_move_date = (date.today() + timedelta(days=30)).isoformat()
         result = log_to_borat_sheet(lead)
         mock_append.assert_called_once_with(
             "fake-spreadsheet-id",
@@ -626,7 +627,7 @@ class TestLogToBoratSheet:
                 "(555) 123-4567",
                 "33028",
                 "10001",
-                "2026-04-01",
+                expected_move_date,
                 "2 Bedrooms",
                 "Yes",
             ],
