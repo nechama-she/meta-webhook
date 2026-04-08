@@ -14,4 +14,4 @@ region = "us-east-1"
 confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 resolve_s3 = true
-parameter_overrides = "Environment=prod RdsSecretArn=REPLACE_WITH_SECRET_ARN RdsHost=REPLACE_WITH_RDS_HOST RdsDbName=moving_crm"
+parameter_overrides = "Environment=prod RdsSecretArn=arn:aws:secretsmanager:us-east-1:381492064416:secret:rds!db-959f86c1-2259-4cd5-a7ba-84aad184418e-1CXxCC RdsHost=moving-crm-dev.cez2oc2cg2qj.us-east-1.rds.amazonaws.com RdsDbName=moving_crm"
