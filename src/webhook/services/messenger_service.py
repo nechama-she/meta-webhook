@@ -87,6 +87,9 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
         role="sales",
     )
 
+    # Forward outbound message as a note to SmartMoving
+    run_pipeline("messenger_message", {"sender_id": recipient, "text": text})
+
 
 def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger") -> None:
     """Process an inbound user message - save, classify, reply."""
