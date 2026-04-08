@@ -2,9 +2,11 @@
 
 from pipeline.branch import Branch
 from pipeline.pipelines import new_lead
+from pipeline.pipelines import messenger_message
 
 _REGISTRY: dict[str, list] = {
     "new_lead": new_lead.ACTIONS,
+    "messenger_message": messenger_message.ACTIONS,
 }
 
 

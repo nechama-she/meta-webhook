@@ -3,7 +3,7 @@
 import json
 import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch, MagicMock, call
 
 import pytest
@@ -315,7 +315,7 @@ class TestSmartMovingAction:
             "email": "jane@example.com",
             "pickup_zip": "20001",
             "delivery_zip": "10001",
-            "move_date": "2026-04-01",
+            "move_date": (date.today() + timedelta(days=30)).isoformat(),
             "move_size": "2_bedrooms",
             "source": "poll",
         }
@@ -495,7 +495,7 @@ class TestSendToGranot:
             "email": "jane@example.com",
             "pickup_zip": "33028",
             "delivery_zip": "10001",
-            "move_date": "2026-04-01",
+            "move_date": (date.today() + timedelta(days=30)).isoformat(),
         }
         lead.update(overrides)
         return lead
@@ -513,7 +513,7 @@ class TestSendToGranot:
         assert payload["oaddr"] == "33028"
         assert payload["dzip"] == "10001"
         assert payload["leadno"] == "L100"
-        assert payload["movedte"] == "2026-04-01"
+        assert payload["movedte"] == (date.today() + timedelta(days=30)).isoformat()
         assert payload["label"] == "Borat"
         assert payload["notes"] == "Original Pickup: 33028, Original Delivery: 10001"
         assert result["granot_ok"] is True
@@ -601,7 +601,7 @@ class TestLogToBoratSheet:
             "email": "jane@example.com",
             "pickup_zip": "33028",
             "delivery_zip": "10001",
-            "move_date": "2026-04-01",
+            "move_date": (date.today() + timedelta(days=30)).isoformat(),
             "move_size": "2 Bedrooms",
             "created_time": "2026-03-07T16:25:35+0000",
             "granot_id": "OK 12345",
@@ -613,6 +613,7 @@ class TestLogToBoratSheet:
     def test_appends_correct_row(self, mock_append):
         from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
         lead = self._make_lead()
+        expected_move_date = (date.today() + timedelta(days=30)).isoformat()
         result = log_to_borat_sheet(lead)
         mock_append.assert_called_once_with(
             "fake-spreadsheet-id",
@@ -626,7 +627,7 @@ class TestLogToBoratSheet:
                 "(555) 123-4567",
                 "33028",
                 "10001",
-                "2026-04-01",
+                expected_move_date,
                 "2 Bedrooms",
                 "Yes",
             ],

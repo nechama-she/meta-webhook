@@ -4,7 +4,7 @@ import os
 import time
 
 from meta_api import get_leadgen_forms, get_form_leads
-from db import save_lead_if_new
+from db import save_lead_if_new, update_lead
 from pipeline import run_pipeline
 
 PAGE_IDS = [
@@ -57,6 +57,7 @@ def poll_leads() -> int:
                 if save_lead_if_new(item):
                     print(f"NEW_LEAD_FOUND | leadgen_id={leadgen_id} | page_id={page_id} | form_id={form_id} | details={item}")
                     run_pipeline("new_lead", item)
+                    update_lead(item)
                     total_saved += 1
 
     print(f"Lead poll: done, {total_saved} new lead(s) saved")

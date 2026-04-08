@@ -3,6 +3,7 @@
 from db.client import (
     save_event,
     save_lead_if_new,
+    update_lead,
     get_conversation,
     save_conversation_message,
     replace_summary,

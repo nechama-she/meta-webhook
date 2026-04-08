@@ -7,6 +7,7 @@ import uuid
 
 from ai import generate_reply
 from meta_api import send_messenger_message
+from pipeline import run_pipeline
 from services.conversation_service import (
     save_message,
     fetch_conversation,
@@ -113,6 +114,9 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
         timestamp=messaging.get("timestamp", 0),
         role="user",
     )
+
+    # 1b. Run messenger_message pipeline (SmartMoving note, etc.)
+    run_pipeline("messenger_message", {"sender_id": sender_id, "text": text})
 
     # 2. Load & log full conversation
     print("Step 2: Fetching conversation history...")
