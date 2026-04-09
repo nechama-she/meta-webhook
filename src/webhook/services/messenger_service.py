@@ -6,6 +6,7 @@ import time
 import uuid
 
 from ai import generate_reply
+from db import save_sender_info
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
 from services.conversation_service import (
@@ -18,6 +19,10 @@ from services.conversation_service import (
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
 )
+
+_PHONE_RE = re.compile(r"phone\s*(?:number)?\s*[:\-]\s*\+?([0-9\s\-().]+)", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"email\s*[:\-]\s*([\w.\-+]+@[\w.\-]+\.\w+)", re.IGNORECASE)
+_NAME_RE = re.compile(r"full\s*name\s*[:\-]\s*(.+)", re.IGNORECASE)
 
 
 # ── Pattern-based auto-replies ────────────────────────────────────────
@@ -60,6 +65,25 @@ def _pattern_reply(text: str) -> str | None:
         return _REPLIES.get(answer)
 
     return None
+
+
+# ── Sender-info cache ────────────────────────────────────────────────
+
+
+def _cache_sender_info(sender_id: str, text: str) -> None:
+    """Parse phone/email/name from message text and cache keyed by sender_id."""
+    phone_match = _PHONE_RE.search(text)
+    email_match = _EMAIL_RE.search(text)
+    name_match = _NAME_RE.search(text)
+
+    if not phone_match and not email_match and not name_match:
+        return
+
+    phone = re.sub(r"\D", "", phone_match.group(1)) if phone_match else ""
+    email = email_match.group(1).strip().lower() if email_match else ""
+    name = name_match.group(1).strip() if name_match else ""
+
+    save_sender_info(sender_id, phone=phone, email=email, name=name)
 
 
 # ── Core handler ──────────────────────────────────────────────────────
@@ -118,7 +142,10 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
         role="user",
     )
 
-    # 1b. Run messenger_message pipeline (SmartMoving note, etc.)
+    # 1b. Cache sender contact info for leadgen lookup
+    _cache_sender_info(sender_id, text)
+
+    # 1c. Run messenger_message pipeline (SmartMoving note, etc.)
     run_pipeline("messenger_message", {"sender_id": sender_id, "text": text, "direction": "user"})
 
     # 2. Load & log full conversation
