@@ -5,7 +5,7 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE
+from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE, SENDER_INFO_TABLE
 
 _dynamo = boto3.resource("dynamodb")
 _client = boto3.client("dynamodb")
@@ -47,14 +47,32 @@ _ensure_table(
     ],
 )
 
+_ensure_table(
+    SENDER_INFO_TABLE,
+    [{"AttributeName": "sender_id", "KeyType": "HASH"}],
+    [{"AttributeName": "sender_id", "AttributeType": "S"}],
+)
+
 _events_table = _dynamo.Table(EVENTS_TABLE)
 _conversations_table = _dynamo.Table(CONVERSATIONS_TABLE)
 _leads_table = _dynamo.Table(LEADS_TABLE)
 _cache_table = _dynamo.Table(CACHE_TABLE)
 _sms_table = _dynamo.Table(SMS_MESSAGES_TABLE)
+_sender_info_table = _dynamo.Table(SENDER_INFO_TABLE)
 
 
 # ── Cache ─────────────────────────────────────────────────────────────
+
+def save_sender_info(sender_id: str, **fields) -> None:
+    """Upsert sender contact info (phone, email, name) into the sender_info table."""
+    try:
+        item = {"sender_id": sender_id}
+        item.update({k: v for k, v in fields.items() if v})
+        _sender_info_table.put_item(Item=item)
+        print(f"Saved sender_info for {sender_id}: {item}")
+    except Exception as exc:
+        print(f"save_sender_info error for '{sender_id}': {repr(exc)}")
+
 
 def cache_get(key: str) -> str | None:
     """Return the cached value for *key*, or None if not found."""
