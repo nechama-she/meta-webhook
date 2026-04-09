@@ -19,6 +19,8 @@ def send_messenger_note(data: dict) -> dict:
         return data
 
     print(f"SmartMoving note: posting to opportunity {smartmoving_id}")
-    add_note(smartmoving_id, f"messenger: {text}")
+    direction = data.get("direction", "user")
+    prefix = "messenger (customer)" if direction == "user" else "messenger (rep)"
+    add_note(smartmoving_id, f"{prefix}: {text}")
     data["smartmoving_id"] = smartmoving_id
     return data
