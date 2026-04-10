@@ -59,3 +59,24 @@ def get_smartmoving_id(facebook_user_id: str) -> str | None:
         global _conn
         _conn = None
         return None
+
+
+def get_smartmoving_id_by_phone(phone: str) -> str | None:
+    """Look up the smartmoving_id for a given phone number.
+
+    Returns the smartmoving_id string or None if not found.
+    """
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
+                (phone,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as exc:
+        print(f"RDS phone lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
