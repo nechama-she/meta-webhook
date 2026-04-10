@@ -6,7 +6,9 @@ import uuid
 
 from ai import generate_reply
 from aircall import send_sms
+from crm.smartmoving_notes import add_note
 from db import save_sms_message, get_sms_messages
+from db.rds_client import get_smartmoving_id_by_phone
 
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
@@ -19,6 +21,24 @@ _TEST_PHONE = "+12403703417"
 def _normalize_phone(raw: str) -> str:
     """Strip to E.164 format: +13015261984"""
     return re.sub(r"[^\d+]", "", raw)
+
+
+def _post_sms_note(phone: str, company_number: str, text: str, direction: str) -> None:
+    """Look up lead by phone in RDS and post SMS as a SmartMoving note."""
+    # Strip +1 to match how phones are stored in leads table
+    lookup_phone = re.sub(r"[^\d]", "", phone)
+    if lookup_phone.startswith("1") and len(lookup_phone) == 11:
+        lookup_phone = lookup_phone[1:]
+    smartmoving_id = get_smartmoving_id_by_phone(lookup_phone)
+    if not smartmoving_id:
+        print(f"SmartMoving SMS note: no lead found for {phone}")
+        return
+    if direction == "received":
+        note = f"sms: {phone} to {company_number}: {text}"
+    else:
+        note = f"sms: {company_number} to {phone}: {text}"
+    add_note(smartmoving_id, note)
+    print(f"SmartMoving SMS note: posted to {smartmoving_id}")
 
 
 def handle_aircall_message(body: dict) -> None:
@@ -63,6 +83,9 @@ def handle_aircall_message(body: dict) -> None:
         number_id=number_id,
         sales_name=sales_name,
     )
+
+    # 1b. Post SMS as a note to SmartMoving
+    _post_sms_note(phone_number, company_number, text, direction)
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
