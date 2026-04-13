@@ -5,7 +5,7 @@ import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE, SENDER_INFO_TABLE
+from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE, SENDER_INFO_TABLE, PENDING_NOTES_TABLE
 
 _dynamo = boto3.resource("dynamodb")
 _client = boto3.client("dynamodb")
@@ -60,6 +60,14 @@ _cache_table = _dynamo.Table(CACHE_TABLE)
 _sms_table = _dynamo.Table(SMS_MESSAGES_TABLE)
 _sender_info_table = _dynamo.Table(SENDER_INFO_TABLE)
 
+_ensure_table(
+    PENDING_NOTES_TABLE,
+    [{"AttributeName": "note_id", "KeyType": "HASH"}],
+    [{"AttributeName": "note_id", "AttributeType": "S"}],
+)
+
+_pending_notes_table = _dynamo.Table(PENDING_NOTES_TABLE)
+
 
 # ── Cache ─────────────────────────────────────────────────────────────
 
@@ -72,6 +80,38 @@ def save_sender_info(sender_id: str, **fields) -> None:
         print(f"Saved sender_info for {sender_id}: {item}")
     except Exception as exc:
         print(f"save_sender_info error for '{sender_id}': {repr(exc)}")
+
+
+def save_pending_note(*, source: str, lookup_key: str, note: str) -> None:
+    """Save a note that couldn't be posted because the lead doesn't exist yet."""
+    try:
+        _pending_notes_table.put_item(Item={
+            "note_id": str(uuid.uuid4()),
+            "source": source,
+            "lookup_key": lookup_key,
+            "note": note,
+        })
+        print(f"Saved pending note ({source}, {lookup_key})")
+    except Exception as exc:
+        print(f"save_pending_note error: {repr(exc)}")
+
+
+def scan_pending_notes() -> list[dict]:
+    """Return all pending notes."""
+    try:
+        resp = _pending_notes_table.scan()
+        return resp.get("Items", [])
+    except Exception as exc:
+        print(f"scan_pending_notes error: {repr(exc)}")
+        return []
+
+
+def delete_pending_note(note_id: str) -> None:
+    """Delete a pending note after successful posting."""
+    try:
+        _pending_notes_table.delete_item(Key={"note_id": note_id})
+    except Exception as exc:
+        print(f"delete_pending_note error: {repr(exc)}")
 
 
 def cache_get(key: str) -> str | None:

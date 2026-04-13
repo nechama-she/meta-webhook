@@ -10,6 +10,9 @@ from db.client import (
     cache_get,
     cache_set,
     save_sender_info,
+    save_pending_note,
+    scan_pending_notes,
+    delete_pending_note,
     save_sms_message,
     get_sms_messages,
 )

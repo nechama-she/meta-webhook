@@ -1,6 +1,7 @@
 """Action: add a messenger note to SmartMoving for an existing lead."""
 
 from crm.smartmoving_notes import add_note
+from db import save_pending_note
 from db.rds_client import get_smartmoving_id
 
 
@@ -13,14 +14,17 @@ def send_messenger_note(data: dict) -> dict:
         print("SmartMoving note: skipped (missing sender_id or text)")
         return data
 
+    direction = data.get("direction", "user")
+    prefix = "messenger (customer)" if direction == "user" else "messenger (rep)"
+    note = f"{prefix}: {text}"
+
     smartmoving_id = get_smartmoving_id(sender_id)
     if not smartmoving_id:
-        print(f"SmartMoving note: no lead found for {sender_id}")
+        print(f"SmartMoving note: no lead found for {sender_id}, saving as pending")
+        save_pending_note(source="messenger", lookup_key=sender_id, note=note)
         return data
 
     print(f"SmartMoving note: posting to opportunity {smartmoving_id}")
-    direction = data.get("direction", "user")
-    prefix = "messenger (customer)" if direction == "user" else "messenger (rep)"
-    add_note(smartmoving_id, f"{prefix}: {text}")
+    add_note(smartmoving_id, note)
     data["smartmoving_id"] = smartmoving_id
     return data

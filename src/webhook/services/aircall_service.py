@@ -7,7 +7,7 @@ import uuid
 from ai import generate_reply
 from aircall import send_sms
 from crm.smartmoving_notes import add_note
-from db import save_sms_message, get_sms_messages
+from db import save_sms_message, get_sms_messages, save_pending_note
 from db.rds_client import get_smartmoving_id_by_phone
 
 ENABLE_OPENAI_ANSWER = (
@@ -31,7 +31,12 @@ def _post_sms_note(phone: str, company_number: str, text: str, direction: str) -
         lookup_phone = lookup_phone[1:]
     smartmoving_id = get_smartmoving_id_by_phone(lookup_phone)
     if not smartmoving_id:
-        print(f"SmartMoving SMS note: no lead found for {phone}")
+        print(f"SmartMoving SMS note: no lead found for {phone}, saving as pending")
+        if direction == "received":
+            note = f"sms: {phone} to {company_number}: {text}"
+        else:
+            note = f"sms: {company_number} to {phone}: {text}"
+        save_pending_note(source="sms", lookup_key=lookup_phone, note=note)
         return
     if direction == "received":
         note = f"sms: {phone} to {company_number}: {text}"

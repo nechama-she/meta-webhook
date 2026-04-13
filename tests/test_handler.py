@@ -1062,3 +1062,84 @@ class TestOpenAIClient:
         iso_date, explanation = parse_date("asap", "2026-03-10")
         assert iso_date == "2026-03-24"
         assert "fallback" in explanation.lower()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Pending notes – SmartMoving note retry
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestPendingNotes:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    @patch("pipeline.actions.smartmoving_note.save_pending_note")
+    @patch("pipeline.actions.smartmoving_note.get_smartmoving_id", return_value=None)
+    def test_messenger_note_saves_pending_when_no_lead(self, mock_rds, mock_save):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+        data = {"sender_id": "u1", "text": "hello", "direction": "user"}
+        send_messenger_note(data)
+        mock_save.assert_called_once_with(
+            source="messenger", lookup_key="u1", note="messenger (customer): hello"
+        )
+
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch("pipeline.actions.smartmoving_note.save_pending_note")
+    @patch("pipeline.actions.smartmoving_note.get_smartmoving_id", return_value="OPP-1")
+    def test_messenger_note_posts_when_lead_exists(self, mock_rds, mock_save, mock_add):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+        data = {"sender_id": "u1", "text": "hello", "direction": "user"}
+        result = send_messenger_note(data)
+        mock_add.assert_called_once_with("OPP-1", "messenger (customer): hello")
+        mock_save.assert_not_called()
+        assert result["smartmoving_id"] == "OPP-1"
+
+    @patch("services.aircall_service.save_pending_note")
+    @patch("services.aircall_service.get_smartmoving_id_by_phone", return_value=None)
+    @patch("services.aircall_service.add_note")
+    def test_aircall_note_saves_pending_when_no_lead(self, mock_add, mock_rds, mock_save):
+        from services.aircall_service import _post_sms_note
+        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        mock_add.assert_not_called()
+        mock_save.assert_called_once()
+        args = mock_save.call_args[1]
+        assert args["source"] == "sms"
+        assert args["lookup_key"] == "2403586309"
+        assert "hi there" in args["note"]
+
+    @patch("services.aircall_service.save_pending_note")
+    @patch("services.aircall_service.get_smartmoving_id_by_phone", return_value="OPP-2")
+    @patch("services.aircall_service.add_note", return_value=True)
+    def test_aircall_note_posts_when_lead_exists(self, mock_add, mock_rds, mock_save):
+        from services.aircall_service import _post_sms_note
+        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        mock_add.assert_called_once()
+        mock_save.assert_not_called()
+
+    @patch("pending_notes_service.delete_pending_note")
+    @patch("pending_notes_service.add_note", return_value=True)
+    @patch("pending_notes_service.get_smartmoving_id_by_phone", return_value="OPP-3")
+    @patch("pending_notes_service.scan_pending_notes", return_value=[
+        {"note_id": "n1", "source": "sms", "lookup_key": "2403586309", "note": "sms: +1240 to +1240: hi"},
+    ])
+    def test_retry_posts_and_deletes(self, mock_scan, mock_rds, mock_add, mock_del):
+        from pending_notes_service import retry_pending_notes
+        count = retry_pending_notes()
+        assert count == 1
+        mock_add.assert_called_once_with("OPP-3", "sms: +1240 to +1240: hi")
+        mock_del.assert_called_once_with("n1")
+
+    @patch("pending_notes_service.delete_pending_note")
+    @patch("pending_notes_service.add_note")
+    @patch("pending_notes_service.get_smartmoving_id", return_value=None)
+    @patch("pending_notes_service.scan_pending_notes", return_value=[
+        {"note_id": "n2", "source": "messenger", "lookup_key": "u1", "note": "messenger (customer): hello"},
+    ])
+    def test_retry_skips_when_still_no_lead(self, mock_scan, mock_rds, mock_add, mock_del):
+        from pending_notes_service import retry_pending_notes
+        count = retry_pending_notes()
+        assert count == 0
+        mock_add.assert_not_called()
+        mock_del.assert_not_called()
