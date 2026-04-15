@@ -58,10 +58,24 @@ def _fetch_page_token(page_id: str) -> str:
         f"https://graph.facebook.com/{ACCOUNTS_API_VERSION}"
         f"/me/accounts?access_token={COMMENTS_DETECTION_USER_TOKEN}"
     )
-    with urllib.request.urlopen(url) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    print(f"Fetching page token for page_id={page_id} from {ACCOUNTS_API_VERSION}/me/accounts")
+    print(f"Using user token from ssm (length={len(COMMENTS_DETECTION_USER_TOKEN)}, starts={COMMENTS_DETECTION_USER_TOKEN[:10]})")
+    print(f"Full request URL: {url}")
+    try:
+        with urllib.request.urlopen(url) as resp:
+            raw = resp.read().decode("utf-8")
+            print(f"Meta /me/accounts raw response: {raw}")
+            data = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", "ignore")
+        print(f"Meta /me/accounts HTTP error {exc.code}: {error_body}")
+        raise
+
+    print(f"Meta /me/accounts parsed data: {json.dumps(data, indent=2)}")
+    print(f"Meta /me/accounts returned {len(data.get('data', []))} pages")
 
     for page in data.get("data", []):
+        print(f"  Page: id={page.get('id')}, name={page.get('name')}")
         if page.get("id") == page_id:
             token = page["access_token"]
             _page_token_cache[page_id] = token
