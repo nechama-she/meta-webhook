@@ -7,7 +7,7 @@ from services.comment_service import process_comment
 from services.lead_service import process_leadgen
 from services.messenger_service import handle_echo, handle_user_message
 from services.aircall_service import handle_aircall_message
-from services.smartmoving_service import handle_followup_created
+from services.smartmoving_service import handle_followup_created, handle_followup_deleted
 
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 
@@ -38,8 +38,11 @@ def lambda_handler(event, context):
 
             # SmartMoving events have "event-type"
             event_type = body.get("event-type")
-            if event_type == "follow-up-created":
+            if event_type in ("follow-up-created", "follow-up-changed", "follow-up-completed"):
                 handle_followup_created(body)
+                return {"statusCode": 200, "body": "OK"}
+            if event_type == "follow-up-deleted":
+                handle_followup_deleted(body)
                 return {"statusCode": 200, "body": "OK"}
 
             entries = body.get("entry", [])

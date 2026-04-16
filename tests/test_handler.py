@@ -1215,3 +1215,53 @@ class TestSmartMovingFollowup:
             "opportunity-id": "op1",
         })
         assert mock_save.call_count == 2
+
+    @patch("services.smartmoving_service.save_followup")
+    @patch("services.smartmoving_service.get_followups")
+    def test_handler_routes_followup_changed(self, mock_get, mock_save):
+        mock_get.return_value = [{"id": "x1", "opportunityId": "op1"}]
+        from handler import lambda_handler
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "follow-up-changed",
+                "followup-id": "x1",
+                "opportunity-id": "op1",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_get.assert_called_once_with("op1")
+        mock_save.assert_called_once()
+
+    @patch("services.smartmoving_service.save_followup")
+    @patch("services.smartmoving_service.get_followups")
+    def test_handler_routes_followup_completed(self, mock_get, mock_save):
+        mock_get.return_value = [{"id": "x1", "opportunityId": "op1", "completed": True}]
+        from handler import lambda_handler
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "follow-up-completed",
+                "followup-id": "x1",
+                "opportunity-id": "op1",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_save.assert_called_once()
+
+    @patch("services.smartmoving_service.delete_followup")
+    def test_handler_routes_followup_deleted(self, mock_del):
+        from handler import lambda_handler
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "follow-up-deleted",
+                "followup-id": "abc-123",
+                "opportunity-id": "op1",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_del.assert_called_once_with("abc-123")

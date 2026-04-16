@@ -159,3 +159,26 @@ def save_followup(followup: dict) -> bool:
         global _conn
         _conn = None
         return False
+
+
+def delete_followup(note_id: str) -> bool:
+    """Delete a followup by note_id.
+
+    Returns True on success, False on error.
+    """
+    _ensure_followups_table()
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM followups WHERE note_id = %s",
+                (note_id,),
+            )
+            print(f"Followup deleted: {note_id}")
+            return True
+    except Exception as exc:
+        print(f"RDS delete followup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False
+        return False
