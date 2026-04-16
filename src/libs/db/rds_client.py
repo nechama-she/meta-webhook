@@ -99,6 +99,7 @@ def _ensure_followups_table():
                     smartmoving_id UUID NOT NULL,
                     type INTEGER,
                     title TEXT,
+                    assigned_to_id UUID,
                     due_date_time TIMESTAMPTZ,
                     completed_at_utc TIMESTAMPTZ,
                     notes TEXT,
@@ -130,12 +131,13 @@ def save_followup(followup: dict) -> bool:
             cur.execute(
                 """
                 INSERT INTO followups (
-                    note_id, smartmoving_id, type, title,
+                    note_id, smartmoving_id, type, title, assigned_to_id,
                     due_date_time, completed_at_utc, notes, completed
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (note_id) DO UPDATE SET
                     type = EXCLUDED.type,
                     title = EXCLUDED.title,
+                    assigned_to_id = EXCLUDED.assigned_to_id,
                     due_date_time = EXCLUDED.due_date_time,
                     completed_at_utc = EXCLUDED.completed_at_utc,
                     notes = EXCLUDED.notes,
@@ -146,6 +148,7 @@ def save_followup(followup: dict) -> bool:
                     followup["opportunityId"],
                     followup.get("type"),
                     followup.get("title"),
+                    followup.get("assignedToId"),
                     followup.get("dueDateTime"),
                     followup.get("completedAtUtc"),
                     followup.get("notes"),
