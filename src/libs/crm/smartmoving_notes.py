@@ -1,4 +1,4 @@
-"""SmartMoving Premium API – add communication notes."""
+"""SmartMoving Premium API – communication notes & followups."""
 
 import json
 import os
@@ -36,3 +36,29 @@ def add_note(opportunity_id: str, note: str) -> bool:
     except Exception as exc:
         print(f"SmartMoving note error: {repr(exc)}")
     return False
+
+
+def get_followups(opportunity_id: str) -> list | None:
+    """GET followups for a SmartMoving opportunity.
+
+    Returns list of followup dicts or None on error.
+    """
+    url = f"{_BASE_URL}/{opportunity_id}/followups"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Cache-Control": "no-cache",
+            "x-api-key": _API_KEY,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            print(f"SmartMoving followups for {opportunity_id}: {resp.status} ({len(data)} items)")
+            return data
+    except urllib.error.HTTPError as exc:
+        print(f"SmartMoving followups HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+    except Exception as exc:
+        print(f"SmartMoving followups error: {repr(exc)}")
+    return None

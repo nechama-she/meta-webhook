@@ -1,4 +1,4 @@
-"""PostgreSQL client – look up leads by facebook_user_id."""
+"""PostgreSQL client – look up leads and save followups."""
 
 import json
 import os
@@ -80,3 +80,82 @@ def get_smartmoving_id_by_phone(phone: str) -> str | None:
         global _conn
         _conn = None
         return None
+
+
+_followups_table_created = False
+
+
+def _ensure_followups_table():
+    """Create the followups table if it doesn't exist."""
+    global _followups_table_created
+    if _followups_table_created:
+        return
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS followups (
+                    note_id UUID PRIMARY KEY,
+                    smartmoving_id UUID NOT NULL,
+                    type INTEGER,
+                    title TEXT,
+                    due_date_time TIMESTAMPTZ,
+                    completed_at_utc TIMESTAMPTZ,
+                    notes TEXT,
+                    completed BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_followups_smartmoving_id
+                ON followups (smartmoving_id)
+            """)
+        _followups_table_created = True
+        print("followups table ensured")
+    except Exception as exc:
+        print(f"RDS create followups table error: {repr(exc)}")
+        global _conn
+        _conn = None
+
+
+def save_followup(followup: dict) -> bool:
+    """Upsert a followup record into the followups table.
+
+    Returns True on success, False on error.
+    """
+    _ensure_followups_table()
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO followups (
+                    note_id, smartmoving_id, type, title,
+                    due_date_time, completed_at_utc, notes, completed
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (note_id) DO UPDATE SET
+                    type = EXCLUDED.type,
+                    title = EXCLUDED.title,
+                    due_date_time = EXCLUDED.due_date_time,
+                    completed_at_utc = EXCLUDED.completed_at_utc,
+                    notes = EXCLUDED.notes,
+                    completed = EXCLUDED.completed
+                """,
+                (
+                    followup["id"],
+                    followup["opportunityId"],
+                    followup.get("type"),
+                    followup.get("title"),
+                    followup.get("dueDateTime"),
+                    followup.get("completedAtUtc"),
+                    followup.get("notes"),
+                    followup.get("completed", False),
+                ),
+            )
+            print(f"Followup saved: {followup['id']}")
+            return True
+    except Exception as exc:
+        print(f"RDS save followup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False

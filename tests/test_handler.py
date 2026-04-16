@@ -1143,3 +1143,75 @@ class TestPendingNotes:
         assert count == 0
         mock_add.assert_not_called()
         mock_del.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  SmartMoving followup service
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestSmartMovingFollowup:
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    @patch("services.smartmoving_service.save_followup")
+    @patch("services.smartmoving_service.get_followups")
+    def test_handler_routes_followup_created(self, mock_get, mock_save):
+        mock_get.return_value = [{
+            "id": "464da8b8-6509-461a-bdb4-b42e01025c87",
+            "opportunityId": "04965da2-2647-43f7-8128-b4260137b7b2",
+            "type": 2,
+            "title": "Text aaa bbbb",
+            "assignedToId": "1bde6105-87ba-452e-7281-08dcd42bc7e8",
+            "dueDateTime": "2026-04-17T08:00:00-04:00",
+            "completedAtUtc": None,
+            "notes": "some notes",
+            "completed": False,
+        }]
+        from handler import lambda_handler
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "follow-up-created",
+                "followup-id": "464da8b8-6509-461a-bdb4-b42e01025c87",
+                "opportunity-id": "04965da2-2647-43f7-8128-b4260137b7b2",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_get.assert_called_once_with("04965da2-2647-43f7-8128-b4260137b7b2")
+        mock_save.assert_called_once()
+
+    @patch("services.smartmoving_service.save_followup")
+    @patch("services.smartmoving_service.get_followups")
+    def test_followup_api_failure_still_returns_200(self, mock_get, mock_save):
+        mock_get.return_value = None
+        from handler import lambda_handler
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "follow-up-created",
+                "followup-id": "abc",
+                "opportunity-id": "def",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_save.assert_not_called()
+
+    @patch("services.smartmoving_service.save_followup")
+    @patch("services.smartmoving_service.get_followups")
+    def test_followup_saves_all_returned(self, mock_get, mock_save):
+        mock_get.return_value = [
+            {"id": "a1", "opportunityId": "op1", "type": 1, "title": "First"},
+            {"id": "a2", "opportunityId": "op1", "type": 2, "title": "Second"},
+        ]
+        from services.smartmoving_service import handle_followup_created
+        handle_followup_created({
+            "event-type": "follow-up-created",
+            "followup-id": "a1",
+            "opportunity-id": "op1",
+        })
+        assert mock_save.call_count == 2
