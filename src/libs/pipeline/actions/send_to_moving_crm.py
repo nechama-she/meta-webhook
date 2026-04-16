@@ -68,6 +68,7 @@ def send_to_moving_crm(data: dict) -> dict:
         "company_name": "Gorilla Haulers",
         "source": "Facebook",
         "facebook_user_id": facebook_user_id,
+        "messenger_link": f"https://business.facebook.com/latest/{facebook_user_id}" if facebook_user_id else "",
     }
 
     body = json.dumps(crm_payload).encode("utf-8")
