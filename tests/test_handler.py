@@ -959,43 +959,39 @@ class TestMessengerService:
         assert mock_save.call_args[1]["role"] == "sales"
         assert mock_save.call_args[1]["user_id"] == "u1"
 
-    @patch("services.messenger_service.send_messenger_message")
-    @patch("services.messenger_service.generate_reply", return_value="AI reply")
+    @patch("services.messenger_service.chat_reply", return_value="AI reply")
     @patch("services.messenger_service.summarize", return_value=[{"role": "user", "content": "hello"}])
     @patch("services.messenger_service.log_conversation")
     @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_user_message_generates_reply_and_sends(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
+    def test_user_message_generates_reply_and_saves(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(), {"id": "p1"})
         # Saves user message + AI answer = 2 calls
         assert mock_save.call_count == 2
-        mock_reply.assert_called_once()
-        mock_send.assert_called_once_with("u1", "AI reply", "p1")
+        mock_reply.assert_called_once_with("u1", "hello", "messenger")
 
-    @patch("services.messenger_service.send_messenger_message")
-    @patch("services.messenger_service.generate_reply", return_value="AI reply")
+    @patch("services.messenger_service.chat_reply", return_value="AI reply")
     @patch("services.messenger_service.summarize", return_value=[])
     @patch("services.messenger_service.log_conversation")
     @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_pattern_reply_overrides_openai(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
+    def test_pattern_reply_not_sent(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
-        # Pattern reply overrides — send_messenger_message called with storage question
-        sent_text = mock_send.call_args[0][1]
-        assert "storage unit" in sent_text
+        # AI reply saved but not sent to client
+        mock_reply.assert_called_once()
 
-    @patch("services.messenger_service.send_messenger_message")
-    @patch("services.messenger_service.generate_reply", return_value=None)
+    @patch("services.messenger_service.chat_reply", return_value=None)
     @patch("services.messenger_service.summarize", return_value=[])
     @patch("services.messenger_service.log_conversation")
     @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_no_reply_when_openai_returns_none_and_no_pattern(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
+    def test_no_reply_saved_when_chat_api_returns_none(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="just chatting"), {"id": "p1"})
-        mock_send.assert_not_called()
+        # Only user message saved, no AI reply
+        assert mock_save.call_count == 1
 
     @patch("services.messenger_service.save_message")
     def test_empty_message_skipped(self, mock_save):

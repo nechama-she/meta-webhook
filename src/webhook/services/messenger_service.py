@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 
-from ai import generate_reply
+from ai import chat_reply
 from db import save_sender_info
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
@@ -158,41 +158,28 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     messages_for_api = summarize(conversation, sender_id, page_id)
     print(f"Messages for API: {len(messages_for_api)} items")
 
-    # 4. Determine reply
-    reply_text: str | None = None
-
-    if ENABLE_OPENAI_ANSWER:
-        print("Step 4a: Generating OpenAI reply...")
-        answer = generate_reply(messages_for_api)
-        if answer:
-            save_message(
-                user_id=sender_id,
-                message_id=str(uuid.uuid4()),
-                text=answer,
-                platform="openai",
-                page_id=page_id,
-                timestamp=int(messaging.get("timestamp", 0)) + 1,
-                role="assistant",
-            )
-            print(f"OpenAI answer: {answer!r}")
-            reply_text = answer
-        else:
-            print("OpenAI returned no answer")
+    # 4. Call chat API (dry run – save reply but don't send to client)
+    print("Step 4: Calling chat API...")
+    answer = chat_reply(sender_id, text, "messenger")
+    if answer:
+        save_message(
+            user_id=sender_id,
+            message_id=str(uuid.uuid4()),
+            text=answer,
+            platform=platform,
+            page_id=page_id,
+            timestamp=int(messaging.get("timestamp", 0)) + 1,
+            role="assistant",
+        )
+        print(f"Chat API answer (not sent): {answer!r}")
     else:
-        print("Step 4a: OpenAI disabled (ENABLE_OPENAI_ANSWER=false)")
+        print("Chat API returned no answer")
 
     # Pattern-based override
     pattern_reply = _pattern_reply(text)
     if pattern_reply:
         print(f"Step 4b: Pattern match override: {pattern_reply!r}")
-        reply_text = pattern_reply
-    else:
-        print("Step 4b: No pattern match")
 
-    # 5. Send reply
-    if reply_text:
-        print(f"Step 5: Sending reply to {sender_id} ({len(reply_text)} chars)")
-        send_messenger_message(sender_id, reply_text, page_id)
-        print("Reply sent successfully")
-    else:
-        print(f"Step 5: No reply to send for {sender_id}")
+    # 5. Send reply (disabled – dry run)
+    # if reply_text:
+    #     send_messenger_message(sender_id, reply_text, page_id)

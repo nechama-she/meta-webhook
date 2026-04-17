@@ -13,3 +13,8 @@ OPENAI_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {OPENAI_API_KEY}",
 }
+
+CHAT_API_URL = os.environ.get(
+    "CHAT_API_URL",
+    "https://lumpiness-afflicted-filtrate.ngrok-free.dev/api/chat",
+)
