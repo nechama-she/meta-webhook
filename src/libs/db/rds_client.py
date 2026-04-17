@@ -111,6 +111,9 @@ def _ensure_followups_table():
                 CREATE INDEX IF NOT EXISTS idx_followups_smartmoving_id
                 ON followups (smartmoving_id)
             """)
+            cur.execute("""
+                ALTER TABLE followups ADD COLUMN IF NOT EXISTS assigned_to_id UUID
+            """)
         _followups_table_created = True
         print("followups table ensured")
     except Exception as exc:
