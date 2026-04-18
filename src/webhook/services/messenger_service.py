@@ -175,11 +175,9 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     else:
         print("Chat API returned no answer")
 
-    # Pattern-based override
-    pattern_reply = _pattern_reply(text)
-    if pattern_reply:
-        print(f"Step 4b: Pattern match override: {pattern_reply!r}")
-
-    # 5. Send reply (disabled – dry run)
-    # if reply_text:
-    #     send_messenger_message(sender_id, reply_text, page_id)
+    # 5. Pattern-based replies (these DO send to the client)
+    pattern_text = _pattern_reply(text)
+    if pattern_text:
+        print(f"Step 5: Pattern match – sending to {sender_id}")
+        send_messenger_message(sender_id, pattern_text, page_id)
+        print("Pattern reply sent")

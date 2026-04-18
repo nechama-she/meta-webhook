@@ -971,27 +971,32 @@ class TestMessengerService:
         assert mock_save.call_count == 2
         mock_reply.assert_called_once_with("u1", "hello", "messenger")
 
+    @patch("services.messenger_service.send_messenger_message")
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
     @patch("services.messenger_service.summarize", return_value=[])
     @patch("services.messenger_service.log_conversation")
     @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_pattern_reply_not_sent(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
+    def test_pattern_reply_sends_to_client(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
-        # AI reply saved but not sent to client
-        mock_reply.assert_called_once()
+        # Pattern reply MUST be sent to the client
+        mock_send.assert_called_once()
+        sent_text = mock_send.call_args[0][1]
+        assert "storage unit" in sent_text
 
-    @patch("services.messenger_service.chat_reply", return_value=None)
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.chat_reply", return_value="AI reply")
     @patch("services.messenger_service.summarize", return_value=[])
     @patch("services.messenger_service.log_conversation")
     @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_no_reply_saved_when_chat_api_returns_none(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
+    def test_ai_reply_not_sent_to_client(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="just chatting"), {"id": "p1"})
-        # Only user message saved, no AI reply
-        assert mock_save.call_count == 1
+        # AI reply saved but NOT sent to client
+        mock_send.assert_not_called()
+        assert mock_save.call_count == 2
 
     @patch("services.messenger_service.save_message")
     def test_empty_message_skipped(self, mock_save):
