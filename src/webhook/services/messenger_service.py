@@ -2,23 +2,13 @@
 
 import os
 import re
-import time
 import uuid
 
 from ai import chat_reply
 from db import save_sender_info
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
-from services.conversation_service import (
-    save_message,
-    fetch_conversation,
-    log_conversation,
-    summarize,
-)
-
-ENABLE_OPENAI_ANSWER = (
-    os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
-)
+from services.conversation_service import save_message
 
 _PHONE_RE = re.compile(r"phone\s*(?:number)?\s*[:\-]\s*\+?([0-9\s\-().]+)", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"email\s*[:\-]\s*([\w.\-+]+@[\w.\-]+\.\w+)", re.IGNORECASE)
@@ -148,18 +138,15 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     # 1c. Run messenger_message pipeline (SmartMoving note, etc.)
     run_pipeline("messenger_message", {"sender_id": sender_id, "text": text, "direction": "user"})
 
-    # 2. Load & log full conversation
-    print("Step 2: Fetching conversation history...")
-    conversation = fetch_conversation(sender_id)
-    log_conversation(conversation)
+    # 2. Pattern-based replies
+    pattern_text = _pattern_reply(text)
+    if pattern_text:
+        print(f"Step 2: Pattern match – sending to {sender_id}")
+        send_messenger_message(sender_id, pattern_text, page_id)
+        print("Pattern reply sent")
 
-    # 3. Summarise if threshold reached, and get messages ready for API
-    print(f"Step 3: Summarize check ({len(conversation)} messages)...")
-    messages_for_api = summarize(conversation, sender_id, page_id)
-    print(f"Messages for API: {len(messages_for_api)} items")
-
-    # 4. Call chat API (dry run – save reply but don't send to client)
-    print("Step 4: Calling chat API...")
+    # 3. Call chat API (dry run – save reply but don't send to client)
+    print("Step 3: Calling chat API...")
     answer = chat_reply(sender_id, text, "messenger")
     if answer:
         save_message(
@@ -174,10 +161,3 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
         print(f"Chat API answer (not sent): {answer!r}")
     else:
         print("Chat API returned no answer")
-
-    # 5. Pattern-based replies (these DO send to the client)
-    pattern_text = _pattern_reply(text)
-    if pattern_text:
-        print(f"Step 5: Pattern match – sending to {sender_id}")
-        send_messenger_message(sender_id, pattern_text, page_id)
-        print("Pattern reply sent")

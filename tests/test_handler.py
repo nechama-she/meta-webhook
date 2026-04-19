@@ -960,11 +960,8 @@ class TestMessengerService:
         assert mock_save.call_args[1]["user_id"] == "u1"
 
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
-    @patch("services.messenger_service.summarize", return_value=[{"role": "user", "content": "hello"}])
-    @patch("services.messenger_service.log_conversation")
-    @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_user_message_generates_reply_and_saves(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply):
+    def test_user_message_generates_reply_and_saves(self, mock_save, mock_reply):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(), {"id": "p1"})
         # Saves user message + AI answer = 2 calls
@@ -973,11 +970,8 @@ class TestMessengerService:
 
     @patch("services.messenger_service.send_messenger_message")
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
-    @patch("services.messenger_service.summarize", return_value=[])
-    @patch("services.messenger_service.log_conversation")
-    @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_pattern_reply_sends_to_client(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
+    def test_pattern_reply_sends_to_client(self, mock_save, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
         # Pattern reply MUST be sent to the client
@@ -987,11 +981,8 @@ class TestMessengerService:
 
     @patch("services.messenger_service.send_messenger_message")
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
-    @patch("services.messenger_service.summarize", return_value=[])
-    @patch("services.messenger_service.log_conversation")
-    @patch("services.messenger_service.fetch_conversation", return_value=[])
     @patch("services.messenger_service.save_message")
-    def test_ai_reply_not_sent_to_client(self, mock_save, mock_fetch, mock_log, mock_summarize, mock_reply, mock_send):
+    def test_ai_reply_not_sent_to_client(self, mock_save, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
         handle_user_message(self._make_messaging(text="just chatting"), {"id": "p1"})
         # AI reply saved but NOT sent to client
