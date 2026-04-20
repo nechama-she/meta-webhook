@@ -1,7 +1,12 @@
 """Handle SmartMoving webhook events."""
 
-from crm.smartmoving_notes import get_followups
-from db.rds_client import delete_followup, save_followup
+import re
+
+from aircall import send_sms
+from crm.smartmoving_notes import get_audit_activity, get_followups
+from db.rds_client import delete_followup, get_lead_by_smartmoving_id, get_sales_rep, save_followup
+
+_SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?) \.$")
 
 
 def handle_followup_created(body: dict) -> None:
@@ -30,3 +35,63 @@ def handle_followup_deleted(body: dict) -> None:
         return
 
     delete_followup(followup_id)
+
+
+def handle_opportunity_changed(body: dict) -> None:
+    """Process an opportunity-changed event.
+
+    If the most recent audit activity is a sales person assignment,
+    send an intro SMS from the rep's Aircall number to the lead.
+    """
+    opportunity_id = body.get("opportunity-id")
+    if not opportunity_id:
+        print("Missing opportunity-id in opportunity-changed event")
+        return
+
+    activities = get_audit_activity(opportunity_id)
+    if not activities:
+        print(f"No audit activity for {opportunity_id}")
+        return
+
+    latest = activities[0]
+    description = latest.get("description", "")
+    match = _SALES_PERSON_RE.match(description)
+    if not match:
+        print(f"Not a sales person change: {description!r}")
+        return
+
+    rep_name = match.group(1).strip()
+    print(f"Sales person changed to {rep_name!r} for {opportunity_id}")
+
+    aircall_number_id = get_sales_rep(rep_name)
+    if not aircall_number_id:
+        print(f"Sales rep {rep_name!r} not found in sales_reps table")
+        return
+
+    lead = get_lead_by_smartmoving_id(opportunity_id)
+    if not lead or not lead.get("phone") or not lead.get("company_name"):
+        print(f"Lead not found or missing phone/company for {opportunity_id}")
+        return
+
+    full_name = lead.get("full_name") or ""
+    if not full_name:
+        print(f"Lead has no name for {opportunity_id}")
+        return
+
+    message = (
+        f"Hi {full_name},\n"
+        f"This is {rep_name} from {lead['company_name']}. "
+        f"I've been assigned to help you with your upcoming move.\n\n"
+        f"I'll be your point of contact and can assist with the estimate. "
+        f"We can schedule a virtual in-home estimate, complete the estimate "
+        f"over the phone with one of our estimators, or schedule a free "
+        f"in-home estimate.\n\n"
+        f"You can reply here or feel free to give me a call anytime."
+    )
+
+    phone = lead["phone"]
+    if not phone.startswith("+"):
+        phone = f"+1{phone}" if len(phone) == 10 else f"+{phone}"
+
+    print(f"Sending intro SMS to {phone} from Aircall number {aircall_number_id}")
+    send_sms(int(aircall_number_id), phone, message)

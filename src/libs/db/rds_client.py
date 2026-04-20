@@ -187,4 +187,57 @@ def delete_followup(note_id: str) -> bool:
         global _conn
         _conn = None
         return False
-        return False
+
+
+def get_sales_rep(name: str) -> str | None:
+    """Look up aircall_number_id for a sales rep by name.
+
+    Returns aircall_number_id string or None if not found.
+    """
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT aircall_number_id FROM sales_reps WHERE name = %s LIMIT 1",
+                (name,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    except Exception as exc:
+        print(f"RDS sales_rep lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
+def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
+    """Look up lead info by smartmoving_id, joining companies for company name.
+
+    Returns dict with full_name, phone, company_name or None if not found.
+    """
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT l.full_name, l.phone, c.name
+                FROM leads l
+                LEFT JOIN companies c ON l.company_id = c.id
+                WHERE l.smartmoving_id = %s
+                LIMIT 1
+                """,
+                (smartmoving_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "full_name": row[0],
+                "phone": row[1],
+                "company_name": row[2],
+            }
+    except Exception as exc:
+        print(f"RDS lead by smartmoving_id error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
