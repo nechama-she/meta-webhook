@@ -1257,3 +1257,135 @@ class TestSmartMovingFollowup:
         resp = lambda_handler(event, None)
         assert resp["statusCode"] == 200
         mock_del.assert_called_once_with("abc-123")
+
+
+class TestOpportunityChanged:
+
+    _OPP_ID = "04965da2-2647-43f7-8128-b4260137b7b2"
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, ENV_VARS):
+            yield
+
+    def _event(self):
+        return {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "opportunity-changed",
+                "opportunity-id": self._OPP_ID,
+                "opportunity-status": 0,
+            }),
+        }
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_sends_sms_on_sales_person_change(self, mock_audit, mock_rep, mock_lead, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": "2403586309",
+            "company_name": "Gorilla Haulers",
+        }
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_called_once()
+        args = mock_sms.call_args
+        assert args[0][0] == 645873
+        assert args[0][1] == "+12403586309"
+        assert "Hi John Smith" in args[0][2]
+        assert "Eli Jones" in args[0][2]
+        assert "Gorilla Haulers" in args[0][2]
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_sends_sms_with_trailing_space_dot(self, mock_audit, mock_rep, mock_lead, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Sean Edson .", "activityType": 1}
+        ]
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "Jane Doe",
+            "phone": "+12403586309",
+            "company_name": "Gorilla Haulers",
+        }
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_called_once()
+        assert "Sean Edson" in mock_sms.call_args[0][2]
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_not_sales_person_change(self, mock_audit, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Opportunity reopened.", "activityType": 1}
+        ]
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_rep_not_in_table(self, mock_audit, mock_rep, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Unknown Person.", "activityType": 1}
+        ]
+        mock_rep.return_value = None
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_lead_not_found(self, mock_audit, mock_rep, mock_lead, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = None
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_lead_missing_phone(self, mock_audit, mock_rep, mock_lead, mock_sms):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": None,
+            "company_name": "Gorilla Haulers",
+        }
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_no_audit_activity(self, mock_audit, mock_sms):
+        mock_audit.return_value = []
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()

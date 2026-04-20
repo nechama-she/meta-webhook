@@ -6,7 +6,7 @@ from aircall import send_sms
 from crm.smartmoving_notes import get_audit_activity, get_followups
 from db.rds_client import delete_followup, get_lead_by_smartmoving_id, get_sales_rep, save_followup
 
-_SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?) \.$")
+_SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
 
 
 def handle_followup_created(body: dict) -> None:
