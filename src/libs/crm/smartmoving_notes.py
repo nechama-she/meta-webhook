@@ -17,6 +17,7 @@ def add_note(opportunity_id: str, note: str) -> bool:
     """
     url = f"{_BASE_URL}/{opportunity_id}/communication/notes"
     body = json.dumps({"notes": note}).encode("utf-8")
+    print(f"SmartMoving add_note REQUEST: POST {url} body={body.decode('utf-8')!r}")
     req = urllib.request.Request(
         url,
         data=body,
@@ -30,12 +31,13 @@ def add_note(opportunity_id: str, note: str) -> bool:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             result = resp.read().decode("utf-8")
-            print(f"SmartMoving note added to {opportunity_id}: {resp.status} {result}")
+            print(f"SmartMoving add_note RESPONSE: {resp.status} {result!r}")
             return True
     except urllib.error.HTTPError as exc:
-        print(f"SmartMoving note HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+        body_err = exc.read().decode("utf-8", "ignore")
+        print(f"SmartMoving add_note ERROR: {exc.code} {body_err!r}")
     except Exception as exc:
-        print(f"SmartMoving note error: {repr(exc)}")
+        print(f"SmartMoving add_note ERROR: {repr(exc)}")
     return False
 
 
