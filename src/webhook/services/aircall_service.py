@@ -65,10 +65,6 @@ def handle_aircall_message(body: dict) -> None:
     company_name = number_info.get("name", "")
     number_id = number_info.get("id")
 
-    if number_id != _GORILLA_NUMBER_ID:
-        print(f"Aircall: ignoring non-Gorilla number {number_id} ({company_name})")
-        return
-
     direction = "sent" if event_type == "message.sent" else "received"
 
     user_info = data.get("user") or {}
@@ -94,6 +90,11 @@ def handle_aircall_message(body: dict) -> None:
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
+        return
+
+    # Keep AI auto-reply scoped to Gorilla number only.
+    if number_id != _GORILLA_NUMBER_ID:
+        print(f"Aircall: auto-reply disabled for non-Gorilla number {number_id} ({company_name})")
         return
 
     # Test auto-reply for a specific number
