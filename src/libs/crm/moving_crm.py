@@ -99,40 +99,48 @@ def get_company(company_id: str) -> dict | None:
     global _admin_token_cache
 
     if company_id in _company_name_cache:
+        print(f"Moving CRM companies: cache hit for company_id={company_id}")
         return _company_name_cache[company_id]
 
     if not company_id or not _BASE_URL:
+        print(f"Moving CRM companies: invalid input company_id={company_id!r} base_url={_BASE_URL!r}")
         return None
 
-    def _request(token: str) -> dict | None:
-        url = f"{_BASE_URL.rstrip('/')}/api/companies/{urllib.parse.quote(company_id)}"
+    def _request_by_facebook_page(token: str) -> dict | None:
+        url = f"{_BASE_URL.rstrip('/')}/api/companies/by-facebook-page/{urllib.parse.quote(company_id)}"
+        print(f"Moving CRM companies REQUEST: GET {url} facebook_page_id={company_id}")
         req = urllib.request.Request(
             url,
             headers={"Authorization": f"Bearer {token}"},
             method="GET",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            print(f"Moving CRM companies RESPONSE: {resp.status} {raw}")
+            return json.loads(raw)
 
     token = _admin_token_cache or _login()
     if not token:
         return None
 
     try:
-        payload = _request(token)
+        payload = _request_by_facebook_page(token)
     except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", "ignore")
         if exc.code in (401, 403):
+            print(f"Moving CRM companies AUTH error: {exc.code} {error_body}")
             _admin_token_cache = None
             refreshed = _login()
             if not refreshed:
                 return None
             try:
-                payload = _request(refreshed)
+                payload = _request_by_facebook_page(refreshed)
+                print(f"Moving CRM companies: retry success for company_id={company_id}")
             except Exception as retry_exc:
                 print(f"Moving CRM companies error after token refresh: {repr(retry_exc)}")
                 return None
         else:
-            print(f"Moving CRM companies HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+            print(f"Moving CRM companies by-facebook-page HTTP error: {exc.code} {error_body}")
             return None
     except Exception as exc:
         print(f"Moving CRM companies error: {repr(exc)}")
@@ -149,5 +157,6 @@ def get_company(company_id: str) -> dict | None:
         "name": data.get("name") or data.get("company_name") or data.get("companyName") or "",
         "phone": data.get("phone") or "",
     }
+    print(f"Moving CRM companies parsed: company_id={company_id} name={result['name']!r} phone={result['phone']!r}")
     _company_name_cache[company_id] = result
     return result
