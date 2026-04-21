@@ -1,11 +1,21 @@
 """DynamoDB persistence layer."""
 
 import uuid
+import time
 
 import boto3
 from boto3.dynamodb.conditions import Key
 
-from db.config import EVENTS_TABLE, CONVERSATIONS_TABLE, LEADS_TABLE, CACHE_TABLE, SMS_MESSAGES_TABLE, SENDER_INFO_TABLE, PENDING_NOTES_TABLE
+from db.config import (
+    EVENTS_TABLE,
+    CONVERSATIONS_TABLE,
+    LEADS_TABLE,
+    CACHE_TABLE,
+    SMS_MESSAGES_TABLE,
+    SENDER_INFO_TABLE,
+    PENDING_NOTES_TABLE,
+    WEBHOOK_DEDUPE_TABLE,
+)
 
 _dynamo = boto3.resource("dynamodb")
 _client = boto3.client("dynamodb")
@@ -66,7 +76,14 @@ _ensure_table(
     [{"AttributeName": "note_id", "AttributeType": "S"}],
 )
 
+_ensure_table(
+    WEBHOOK_DEDUPE_TABLE,
+    [{"AttributeName": "dedupe_key", "KeyType": "HASH"}],
+    [{"AttributeName": "dedupe_key", "AttributeType": "S"}],
+)
+
 _pending_notes_table = _dynamo.Table(PENDING_NOTES_TABLE)
+_webhook_dedupe_table = _dynamo.Table(WEBHOOK_DEDUPE_TABLE)
 
 
 # ── Cache ─────────────────────────────────────────────────────────────
@@ -112,6 +129,21 @@ def delete_pending_note(note_id: str) -> None:
         _pending_notes_table.delete_item(Key={"note_id": note_id})
     except Exception as exc:
         print(f"delete_pending_note error: {repr(exc)}")
+
+
+def try_claim_dedupe_key(key: str) -> bool:
+    """Claim a webhook dedupe key once. Returns False if it was already claimed."""
+    try:
+        _webhook_dedupe_table.put_item(
+            Item={"dedupe_key": key, "created_at": int(time.time())},
+            ConditionExpression="attribute_not_exists(dedupe_key)",
+        )
+        return True
+    except _dynamo.meta.client.exceptions.ConditionalCheckFailedException:
+        return False
+    except Exception as exc:
+        print(f"Dedupe claim error for '{key}': {repr(exc)}")
+        return False
 
 
 def cache_get(key: str) -> str | None:

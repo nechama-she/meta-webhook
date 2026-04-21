@@ -5,7 +5,7 @@ import uuid
 
 from ai import chat_reply
 from crm.moving_crm import get_company
-from db import save_sender_info
+from db import try_claim_dedupe_key, save_sender_info
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
 from services.conversation_service import save_message
@@ -78,6 +78,13 @@ def _cache_sender_info(sender_id: str, text: str) -> None:
     save_sender_info(sender_id, phone=phone, email=email, name=name)
 
 
+def _is_duplicate_event(cache_key: str) -> bool:
+    if not try_claim_dedupe_key(cache_key):
+        print(f"Messenger: duplicate event skipped ({cache_key})")
+        return True
+    return False
+
+
 # ── Core handler ──────────────────────────────────────────────────────
 
 def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> None:
@@ -116,6 +123,10 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
 
     if not text or not mid:
         print(f"User message skipped: empty text or missing mid (sender={sender_id})")
+        return
+
+    dedupe_key = f"messenger:user:{platform}:{sender_id}:{mid}"
+    if _is_duplicate_event(dedupe_key):
         return
 
     page_id = entry.get("id")

@@ -15,4 +15,5 @@ from db.client import (
     delete_pending_note,
     save_sms_message,
     get_sms_messages,
+    try_claim_dedupe_key,
 )

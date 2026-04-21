@@ -7,7 +7,7 @@ import uuid
 from ai import chat_reply
 from aircall import send_sms
 from crm.smartmoving_notes import add_note
-from db import save_sms_message, save_pending_note
+from db import try_claim_dedupe_key, save_sms_message, save_pending_note
 from db.rds_client import get_smartmoving_id_by_phone
 
 ENABLE_OPENAI_ANSWER = (
@@ -55,6 +55,11 @@ def handle_aircall_message(body: dict) -> None:
     message_id = str(data.get("id", ""))
     if not text or not message_id:
         print("Aircall: skipped (empty body or missing id)")
+        return
+
+    dedupe_key = f"aircall:event:{event_type}:{message_id}"
+    if not try_claim_dedupe_key(dedupe_key):
+        print(f"Aircall: duplicate event skipped ({dedupe_key})")
         return
 
     phone_number = _normalize_phone(data.get("external_number", ""))
