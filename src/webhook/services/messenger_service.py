@@ -22,14 +22,14 @@ _STATE_RE = re.compile(
 
 def _pattern_reply(text: str, page_id: str | None) -> str | None:
     """Return a canned reply if *text* matches a known pattern, else ``None``."""
+    if "move size: storage" in text.lower():
+        return "What size is the storage unit, and approximately what percentage of it is full?"
+
     company = get_company(page_id or "")
     if not company or not company.get("name") or not company.get("phone"):
         return None
     company_name = company["name"]
     company_phone = company["phone"]
-
-    if "move size: storage" in text.lower():
-        return "What size is the storage unit, and approximately what percentage of it is full?"
 
     match = _STATE_RE.search(text)
     if match:

@@ -6,6 +6,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 
+from crm.moving_crm import get_company
 from pipeline.actions.smartmoving import _clean_phone, _CAMPAIGN_REFERRAL, _DEFAULT_REFERRAL
 
 _CRM_URL = "https://m6efygcjve.execute-api.us-east-1.amazonaws.com/api/leads"
@@ -39,6 +40,9 @@ def send_to_moving_crm(data: dict) -> dict:
     dzip = data.get("delivery_zip", data.get("dzip", ""))
     move_date = data.get("move_date", "")
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
+    company_id = data.get("company_id") or data.get("page_id") or ""
+    company = get_company(str(company_id)) if company_id else None
+    company_name = (company or {}).get("name") or ""
 
     note = (
         f"email: {data.get('email', '')}. "
@@ -65,7 +69,7 @@ def send_to_moving_crm(data: dict) -> dict:
         "service_type": "Moving",
         "notes": note,
         "created_time": datetime.now(timezone.utc).isoformat(),
-        "company_name": "Gorilla Haulers",
+        "company_name": company_name,
         "source": "Facebook",
         "facebook_user_id": facebook_user_id,
         "messenger_link": f"https://business.facebook.com/latest/{facebook_user_id}" if facebook_user_id else "",
