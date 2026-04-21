@@ -11,7 +11,7 @@ _BASE_URL = os.environ.get("MOVING_CRM_API_BASE_URL", "")
 _ADMIN_EMAIL = os.environ.get("MOVING_CRM_ADMIN_EMAIL", "admin@gorillamove.com")
 _ADMIN_PASSWORD_PARAM = os.environ.get(
     "MOVING_CRM_ADMIN_PASSWORD_PARAM",
-    "/moving-crm/dev/ADMIN_PASSWORD",
+    "/meta-webhook/MOVINGCRM_ADMIN_PASSWORD",
 )
 _AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
@@ -23,14 +23,17 @@ _company_name_cache: dict[str, dict] = {}
 def _get_admin_password() -> str | None:
     global _admin_password_cache
     if _admin_password_cache:
+        print("Moving CRM auth: using cached admin password")
         return _admin_password_cache
 
     try:
+        print(f"Moving CRM auth: reading SSM param {_ADMIN_PASSWORD_PARAM} in region {_AWS_REGION}")
         ssm = boto3.client("ssm", region_name=_AWS_REGION)
         resp = ssm.get_parameter(Name=_ADMIN_PASSWORD_PARAM, WithDecryption=True)
         password = (resp.get("Parameter") or {}).get("Value")
         if password:
             _admin_password_cache = password
+            print(f"Moving CRM auth: loaded admin password from SSM (length={len(password)})")
             return password
     except Exception as exc:
         print(f"Moving CRM auth: failed to read SSM param {_ADMIN_PASSWORD_PARAM}: {repr(exc)}")
@@ -58,6 +61,11 @@ def _login() -> str | None:
         print("Moving CRM auth: MOVING_CRM_API_BASE_URL is not configured")
         return None
 
+    print(
+        "Moving CRM auth: attempting login "
+        f"base_url={_BASE_URL} email={_ADMIN_EMAIL} password_param={_ADMIN_PASSWORD_PARAM}"
+    )
+
     password = _get_admin_password()
     if not password:
         return None
@@ -76,6 +84,7 @@ def _login() -> str | None:
             token = _extract_token(payload)
             if token:
                 _admin_token_cache = token
+                print("Moving CRM auth: login successful")
                 return token
             print(f"Moving CRM auth: login response missing token: {payload}")
     except urllib.error.HTTPError as exc:
