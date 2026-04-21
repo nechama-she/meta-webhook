@@ -4,10 +4,10 @@ import os
 import re
 import uuid
 
-from ai import generate_reply
+from ai import chat_reply
 from aircall import send_sms
 from crm.smartmoving_notes import add_note
-from db import save_sms_message, get_sms_messages, save_pending_note
+from db import save_sms_message, save_pending_note
 from db.rds_client import get_smartmoving_id_by_phone
 
 ENABLE_OPENAI_ANSWER = (
@@ -97,49 +97,24 @@ def handle_aircall_message(body: dict) -> None:
         print(f"Aircall: auto-reply disabled for non-Gorilla number {number_id} ({company_name})")
         return
 
-    # Test auto-reply for a specific number
-    if phone_number == _TEST_PHONE:
-        reply = "Test response from Gorilla Haulers"
-        print(f"Aircall: test auto-reply to {phone_number}")
-        result = send_sms(number_id, phone_number, reply)
-        if result:
-            save_sms_message(
-                phone_number=phone_number,
-                timestamp=timestamp + 1,
-                message_id=result,
-                text=reply,
-                direction="sent",
-                company_number=company_number,
-                company_name=company_name,
-                number_id=number_id,
-                sales_name="AI",
-            )
+    # 3. Call chat API with the received message.
+    # Use digits only and strip leading US country code (1) for user_id.
+    chat_user_id = re.sub(r"\D", "", phone_number)
+    if chat_user_id.startswith("1") and len(chat_user_id) == 11:
+        chat_user_id = chat_user_id[1:]
+    print(f"Aircall: Calling chat API for {chat_user_id}")
+    answer = chat_reply(chat_user_id, text, "sms")
+    if not answer:
+        print("Aircall: Chat API returned no answer")
         return
+    
+    print(f"Aircall chat API answer: {answer!r}")
 
     if not ENABLE_OPENAI_ANSWER:
-        print("Aircall: OpenAI reply disabled")
+        print("Aircall: SMS reply disabled (chat API called, not sending)")
         return
-
-    # 3. Build conversation history for OpenAI
-    history = get_sms_messages(phone_number)
-    messages_for_api = [
-        {
-            "role": "assistant" if m.get("direction") == "sent" else "user",
-            "content": m.get("text", ""),
-        }
-        for m in history
-    ]
-    print(f"Aircall: {len(messages_for_api)} messages for OpenAI")
-
-    # 4. Generate reply
-    answer = generate_reply(messages_for_api)
-    if not answer:
-        print("Aircall: OpenAI returned no answer")
-        return
-
-    print(f"Aircall OpenAI answer: {answer!r}")
-
-    # 5. Send SMS reply
+    
+    # 4. Send SMS reply
     result = send_sms(number_id, phone_number, answer)
     if result:
         save_sms_message(

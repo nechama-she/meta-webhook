@@ -59,6 +59,11 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: '*'
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: '*'
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -71,6 +76,9 @@ Resources:
           AIRCALL_API_ID: '{{resolve:ssm:/meta-webhook/AIRCALL_API_ID}}'
           AIRCALL_API_TOKEN: '{{resolve:ssm:/meta-webhook/AIRCALL_API_TOKEN}}'
           SMARTMOVING_API_KEY: '{{resolve:ssm:/moving-crm/dev/SMARTMOVING_API_KEY}}'
+          MOVING_CRM_API_BASE_URL: '{{resolve:ssm:/moving-crm/dev/API_BASE_URL}}'
+          MOVING_CRM_ADMIN_EMAIL: 'admin@gorillamove.com'
+          MOVING_CRM_ADMIN_PASSWORD_PARAM: '/moving-crm/dev/ADMIN_PASSWORD'
           CHAT_API_URL: '{{resolve:ssm:/meta-webhook/CHAT_API_URL}}'
           RDS_SECRET_ARN: !Ref RdsSecretArn
           RDS_HOST: !Ref RdsHost

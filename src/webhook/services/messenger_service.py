@@ -1,10 +1,10 @@
 """Messenger inbound-message handling and auto-reply logic."""
 
-import os
 import re
 import uuid
 
 from ai import chat_reply
+from crm.moving_crm import get_company
 from db import save_sender_info
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
@@ -13,8 +13,6 @@ from services.conversation_service import save_message
 _PHONE_RE = re.compile(r"phone\s*(?:number)?\s*[:\-]\s*\+?([0-9\s\-().]+)", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"email\s*[:\-]\s*([\w.\-+]+@[\w.\-]+\.\w+)", re.IGNORECASE)
 _NAME_RE = re.compile(r"full\s*name\s*[:\-]\s*(.+)", re.IGNORECASE)
-
-
 # ── Pattern-based auto-replies ────────────────────────────────────────
 
 _STATE_RE = re.compile(
@@ -22,37 +20,41 @@ _STATE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_REPLIES = {
-    "out of state": (
-        "Thank you for reaching out to Gorilla Haulers.\n"
-        "For out-of-state moves, pricing is based on the total size of your shipment. "
-        "To give you an accurate quote, we need a list of items that will not go into "
-        "boxes, such as furniture or appliances, and about how many boxes you expect. "
-        "You can list the items here in the chat, send pictures, or we can schedule a "
-        "call to create the inventory together. You can also call us anytime at Gorilla "
-        "Haulers for a quick estimate at (202) 937-2625."
-    ),
-    "within the state": (
-        "Thank you for reaching out to Gorilla Haulers.\n"
-        "For local moves, pricing is based on the number of hours the move takes. "
-        "To give you an accurate estimate, we need a list of items that will not go "
-        "into boxes, such as furniture or appliances, and about how many boxes you "
-        "expect. You can list the items here in the chat, send pictures, or we can "
-        "schedule a call to create the inventory together. You can also call us anytime "
-        "at Gorilla Haulers for a quick estimate at (202) 937-2625."
-    ),
-}
-
-
-def _pattern_reply(text: str) -> str | None:
+def _pattern_reply(text: str, page_id: str | None) -> str | None:
     """Return a canned reply if *text* matches a known pattern, else ``None``."""
+    company = get_company(page_id or "")
+    if not company or not company.get("name") or not company.get("phone"):
+        return None
+    company_name = company["name"]
+    company_phone = company["phone"]
+
     if "move size: storage" in text.lower():
         return "What size is the storage unit, and approximately what percentage of it is full?"
 
     match = _STATE_RE.search(text)
     if match:
         answer = match.group(1).strip().lower()
-        return _REPLIES.get(answer)
+        if answer == "out of state":
+            return (
+                f"Thank you for reaching out to {company_name}.\n"
+                "For out-of-state moves, pricing is based on the total size of your shipment. "
+                "To give you an accurate quote, we need a list of items that will not go into "
+                "boxes, such as furniture or appliances, and about how many boxes you expect. "
+                "You can list the items here in the chat, send pictures, or we can schedule a "
+                f"call to create the inventory together. You can also call us anytime at {company_name} for a "
+                f"quick estimate at {company_phone}."
+            )
+        if answer == "within the state":
+            return (
+                f"Thank you for reaching out to {company_name}.\n"
+                "For local moves, pricing is based on the number of hours the move takes. "
+                "To give you an accurate estimate, we need a list of items that will not go "
+                "into boxes, such as furniture or appliances, and about how many boxes you "
+                "expect. You can list the items here in the chat, send pictures, or we can "
+                f"schedule a call to create the inventory together. You can also call us anytime at {company_name} "
+                f"for a quick estimate at {company_phone}."
+            )
+        return None
 
     return None
 
@@ -139,7 +141,7 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     run_pipeline("messenger_message", {"sender_id": sender_id, "text": text, "direction": "user"})
 
     # 2. Pattern-based replies
-    pattern_text = _pattern_reply(text)
+    pattern_text = _pattern_reply(text, page_id)
     if pattern_text:
         print(f"Step 2: Pattern match – sending to {sender_id}")
         send_messenger_message(sender_id, pattern_text, page_id)
