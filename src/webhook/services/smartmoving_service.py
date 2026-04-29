@@ -3,7 +3,8 @@
 import re
 
 from aircall import send_sms
-from crm.smartmoving_notes import get_audit_activity, get_followups
+from crm.smartmoving_notes import add_note, get_audit_activity, get_followups
+from db import try_claim_dedupe_key
 from db.rds_client import delete_followup, get_lead_by_smartmoving_id, get_sales_rep, save_followup
 
 _SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
@@ -92,6 +93,26 @@ def handle_opportunity_changed(body: dict) -> None:
     phone = lead["phone"]
     if not phone.startswith("+"):
         phone = f"+1{phone}" if len(phone) == 10 else f"+{phone}"
+
+    # Dedupe per rep+phone: same rep won't send intro twice to same number.
+    # Different reps can each send their own intro once.
+    rep_key = str(aircall_number_id).strip()
+    dedupe_key = f"SMS_INTRO:{rep_key}:{phone}"
+    is_first_intro_for_phone = try_claim_dedupe_key(dedupe_key)
+    already_sent_intro_sms = not is_first_intro_for_phone
+    print(
+        f"Intro dedupe check: rep={rep_name}, rep_key={rep_key}, phone={phone}, key={dedupe_key}, "
+        f"already_sent={already_sent_intro_sms}"
+    )
+
+    if already_sent_intro_sms:
+        print(f"Intro SMS already sent by this rep to {phone} - adding note instead of duplicate send")
+        note_text = (
+            f"[DEDUPE] This contact may already be assigned to you in another company/opportunity. "
+            "Intro SMS was not sent again."
+        )
+        add_note(opportunity_id, note_text)
+        return
 
     print(f"Sending intro SMS to {phone} from Aircall number {aircall_number_id}")
     send_sms(int(aircall_number_id), phone, message)
