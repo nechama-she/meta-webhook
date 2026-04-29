@@ -125,7 +125,9 @@ Resources:
             - Effect: Allow
               Action:
                 - ssm:GetParameter
-              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/GOOGLE_SHEETS_CREDENTIALS'
+              Resource:
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/GOOGLE_SHEETS_CREDENTIALS'
+                - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt LeadPollDLQ.Arn
@@ -145,6 +147,9 @@ Resources:
           GRANOT_MOVER_REF: '{{resolve:ssm:/meta-webhook/GRANOT_MOVER_REF}}'
           BORAT_LEADS_SPREADSHEET_ID: '{{resolve:ssm:/meta-webhook/BORAT_LEADS_SPREADSHEET_ID}}'
           MOVING_CRM_API_SECRET: '{{resolve:ssm:/meta-webhook/MOVING_CRM_API_SECRET}}'
+          MOVING_CRM_API_BASE_URL: '{{resolve:ssm:/moving-crm/dev/API_BASE_URL}}'
+          MOVING_CRM_ADMIN_EMAIL: 'admin@gorillamove.com'
+          MOVING_CRM_ADMIN_PASSWORD_PARAM: '/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
       Events:
         LeadPollSchedule:
           Type: ScheduleV2

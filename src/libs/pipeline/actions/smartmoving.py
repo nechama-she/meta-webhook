@@ -32,6 +32,7 @@ def _build_payload(data: dict) -> dict:
     move_date = data.get("move_date", "")
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
     campaign = data.get("campaign", "")
+    pushed_by = f"lambda:{os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'unknown')}"
 
     message = (
         f"pickup {ozip}\n"
@@ -46,6 +47,7 @@ def _build_payload(data: dict) -> dict:
     move_date_raw = data.get("move_date_raw", move_date)
 
     note = (
+        f"pushedBy:{pushed_by}. "
         f"email: {email}. "
         f"pickup:{ozip}. "
         f"delivery:{dzip}. "
