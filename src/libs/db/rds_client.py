@@ -82,6 +82,84 @@ def get_smartmoving_id_by_phone(phone: str) -> str | None:
         return None
 
 
+_lead_rep_assignments_table_created = False
+
+
+def _ensure_lead_rep_assignments_table() -> None:
+    """Create the lead rep assignments table if it doesn't exist."""
+    global _lead_rep_assignments_table_created
+    if _lead_rep_assignments_table_created:
+        return
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS lead_rep_assignments (
+                    smartmoving_id UUID PRIMARY KEY,
+                    rep_name TEXT NOT NULL,
+                    rep_phone_number TEXT,
+                    rep_aircall_id BIGINT,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        _lead_rep_assignments_table_created = True
+        print("lead_rep_assignments table ensured")
+    except Exception as exc:
+        print(f"RDS create lead_rep_assignments table error: {repr(exc)}")
+        global _conn
+        _conn = None
+
+
+def save_lead_rep_assignment(
+    smartmoving_id: str,
+    rep_name: str,
+    rep_phone_number: str | None,
+    rep_aircall_id: str | int | None,
+) -> bool:
+    """Upsert SmartMoving lead -> rep assignment metadata."""
+    if not smartmoving_id or not rep_name:
+        return False
+
+    _ensure_lead_rep_assignments_table()
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO lead_rep_assignments (
+                    smartmoving_id,
+                    rep_name,
+                    rep_phone_number,
+                    rep_aircall_id
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (smartmoving_id) DO UPDATE SET
+                    rep_name = EXCLUDED.rep_name,
+                    rep_phone_number = EXCLUDED.rep_phone_number,
+                    rep_aircall_id = EXCLUDED.rep_aircall_id,
+                    updated_at = NOW()
+                """,
+                (
+                    smartmoving_id,
+                    rep_name,
+                    rep_phone_number,
+                    int(rep_aircall_id) if rep_aircall_id not in (None, "") else None,
+                ),
+            )
+        print(
+            f"Lead rep assignment saved: smartmoving_id={smartmoving_id}, rep_name={rep_name}, "
+            f"rep_phone={rep_phone_number}, rep_aircall_id={rep_aircall_id}"
+        )
+        return True
+    except Exception as exc:
+        print(f"RDS save lead rep assignment error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False
+
+
 _followups_table_created = False
 
 

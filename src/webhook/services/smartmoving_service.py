@@ -5,7 +5,13 @@ import re
 from aircall import send_sms
 from crm.smartmoving_notes import add_note, get_audit_activity, get_followups
 from db import try_claim_dedupe_key
-from db.rds_client import delete_followup, get_lead_by_smartmoving_id, get_sales_rep, save_followup
+from db.rds_client import (
+    delete_followup,
+    get_lead_by_smartmoving_id,
+    get_sales_rep,
+    save_followup,
+    save_lead_rep_assignment,
+)
 
 _SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
 
@@ -68,6 +74,13 @@ def handle_opportunity_changed(body: dict) -> None:
     if not aircall_number_id:
         print(f"Sales rep {rep_name!r} not found in sales_reps table")
         return
+
+    save_lead_rep_assignment(
+        opportunity_id,
+        rep_name,
+        None,
+        aircall_number_id,
+    )
 
     lead = get_lead_by_smartmoving_id(opportunity_id)
     if not lead or not lead.get("phone") or not lead.get("company_name"):
