@@ -37,10 +37,11 @@ def retry_pending_notes() -> int:
             print(f"Pending notes: still no lead for {source}:{lookup_key}")
             continue
 
-        if add_note(smartmoving_id, note):
+        result = add_note(smartmoving_id, note)
+        if result is not None:
             delete_pending_note(note_id)
             posted += 1
-            print(f"Pending notes: posted {note_id} to {smartmoving_id}")
+            print(f"Pending notes: posted {note_id} to {smartmoving_id} result={result!r}")
         else:
             print(f"Pending notes: failed to post {note_id}")
 

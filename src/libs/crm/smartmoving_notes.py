@@ -10,10 +10,10 @@ _OPP_URL = "https://api-public.smartmoving.com/v1/api/opportunities"
 _API_KEY = os.environ.get("SMARTMOVING_API_KEY", "")
 
 
-def add_note(opportunity_id: str, note: str) -> bool:
+def add_note(opportunity_id: str, note: str) -> str | None:
     """POST a communication note to a SmartMoving opportunity.
 
-    Returns True on success, False on error.
+    Returns SmartMoving response text on success, None on error.
     """
     url = f"{_BASE_URL}/{opportunity_id}/communication/notes"
     body = json.dumps({"notes": note}).encode("utf-8")
@@ -32,13 +32,13 @@ def add_note(opportunity_id: str, note: str) -> bool:
         with urllib.request.urlopen(req, timeout=15) as resp:
             result = resp.read().decode("utf-8")
             print(f"SmartMoving add_note RESPONSE: {resp.status} {result!r}")
-            return True
+            return result
     except urllib.error.HTTPError as exc:
         body_err = exc.read().decode("utf-8", "ignore")
         print(f"SmartMoving add_note ERROR: {exc.code} {body_err!r}")
     except Exception as exc:
         print(f"SmartMoving add_note ERROR: {repr(exc)}")
-    return False
+    return None
 
 
 def get_followups(opportunity_id: str) -> list | None:

@@ -25,6 +25,10 @@ def send_messenger_note(data: dict) -> dict:
         return data
 
     print(f"SmartMoving note: posting to opportunity {smartmoving_id}")
-    add_note(smartmoving_id, note)
+    result = add_note(smartmoving_id, note)
+    if result is not None:
+        print(f"SmartMoving note: posted to {smartmoving_id} result={result!r}")
+    else:
+        print(f"SmartMoving note: failed to post to {smartmoving_id}")
     data["smartmoving_id"] = smartmoving_id
     return data
