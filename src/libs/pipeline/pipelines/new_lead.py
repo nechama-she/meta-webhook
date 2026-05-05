@@ -6,7 +6,7 @@ from pipeline.actions.date_parser import format_move_date
 from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
 from pipeline.actions.send_to_granot import send_to_granot
 from pipeline.actions.send_to_moving_crm import send_to_moving_crm
-from pipeline.actions.smartmoving import send_to_smartmoving, send_to_smartmoving_wilson
+from pipeline.actions.smartmoving import send_to_smartmoving
 
 
 # Fields that should NOT have underscores replaced
@@ -39,7 +39,7 @@ ACTIONS = [
         if_false=[
             send_to_granot,
             log_to_borat_sheet,
-            send_to_smartmoving_wilson,
+            send_to_smartmoving,
         ],
     ),
 ]

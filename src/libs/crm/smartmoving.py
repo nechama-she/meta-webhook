@@ -12,11 +12,9 @@ _BASE_URL = "https://api.smartmoving.com/api/leads/from-provider/v2"
 def create_lead(payload: dict, branch_id: str | None = None) -> str | None:
     """POST a lead to SmartMoving and return the lead ID (or None on error)."""
     bid = branch_id or SMARTMOVING_GORILLA_BRANCH_ID
-    url = (
-        f"{_BASE_URL}"
-        f"?providerKey={SMARTMOVING_PROVIDER_KEY}"
-        f"&branchId={bid}"
-    )
+    url = f"{_BASE_URL}?providerKey={SMARTMOVING_PROVIDER_KEY}"
+    if bid:
+        url = f"{url}&branchId={bid}"
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,

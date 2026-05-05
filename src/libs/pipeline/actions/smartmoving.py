@@ -75,17 +75,46 @@ def _build_payload(data: dict) -> dict:
     }
 
 
+def send_to_smartmoving_by_branch(data: dict, branch_env_var: str, company_name: str, field_name: str) -> dict:
+    """Send lead to SmartMoving using specified branch ID from environment.
+
+    Args:
+        data: Lead data dict
+        branch_env_var: Environment variable name for branch ID (e.g., "SMARTMOVING_WILSON_BRANCH_ID")
+        company_name: Company name for logging (e.g., "Wilson")
+        field_name: Field name to store result in data dict (e.g., "smartmoving_wilson_lead_id")
+
+    Returns the data dict (possibly enriched with the result field).
+    """
+    branch_id = os.environ.get(branch_env_var, "") if branch_env_var else ""
+    payload = _build_payload(data)
+    print(f"SmartMoving {company_name} payload: {payload}")
+
+    if branch_id:
+        result = create_lead(payload, branch_id=branch_id)
+    elif not branch_env_var:
+        # Explicit primary-branch mode when no branch env var is provided.
+        result = create_lead(payload)
+    else:
+        print(f"SmartMoving {company_name}: {branch_env_var} not set, skipping")
+        return data
+
+    if result:
+        data[field_name] = result
+    return data
+
+
 def send_to_smartmoving(data: dict) -> dict:
     """Send lead to SmartMoving using the Gorilla branch.
 
     Returns the data dict (possibly enriched with smartmoving_lead_id).
     """
-    payload = _build_payload(data)
-    print(f"SmartMoving payload: {payload}")
-    result = create_lead(payload)
-    if result:
-        data["smartmoving_lead_id"] = result
-    return data
+    return send_to_smartmoving_by_branch(
+        data,
+        branch_env_var="",
+        company_name="Primary",
+        field_name="smartmoving_HHG_lead_id",
+    )
 
 
 def send_to_smartmoving_wilson(data: dict) -> dict:
@@ -93,13 +122,9 @@ def send_to_smartmoving_wilson(data: dict) -> dict:
 
     Returns the data dict (possibly enriched with smartmoving_wilson_lead_id).
     """
-    branch_id = os.environ.get("SMARTMOVING_WILSON_BRANCH_ID", "")
-    if not branch_id:
-        print("SmartMoving Wilson: SMARTMOVING_WILSON_BRANCH_ID not set, skipping")
-        return data
-    payload = _build_payload(data)
-    print(f"SmartMoving Wilson payload: {payload}")
-    result = create_lead(payload, branch_id=branch_id)
-    if result:
-        data["smartmoving_wilson_lead_id"] = result
-    return data
+    return send_to_smartmoving_by_branch(
+        data,
+        branch_env_var="SMARTMOVING_WILSON_BRANCH_ID",
+        company_name="Wilson",
+        field_name="smartmoving_wilson_lead_id",
+    )
