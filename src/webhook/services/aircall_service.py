@@ -42,8 +42,11 @@ def _post_sms_note(phone: str, company_number: str, text: str, direction: str) -
         note = f"sms: {phone} to {company_number}: {text}"
     else:
         note = f"sms: {company_number} to {phone}: {text}"
-    add_note(smartmoving_id, note)
-    print(f"SmartMoving SMS note: posted to {smartmoving_id}")
+    result = add_note(smartmoving_id, note)
+    if result is not None:
+        print(f"SmartMoving SMS note: posted to {smartmoving_id} result={result!r}")
+    else:
+        print(f"SmartMoving SMS note: failed to post to {smartmoving_id}")
 
 
 def handle_aircall_message(body: dict) -> None:
