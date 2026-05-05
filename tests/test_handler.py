@@ -334,7 +334,7 @@ class TestSmartMovingAction:
         assert payload["originZip"] == "20001"
         assert payload["destinationZip"] == "10001"
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Local"
-        assert result["smartmoving_lead_id"] == '"abc-123"'
+        assert result["smartmoving_HHG_lead_id"] == '"abc-123"'
 
     @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_nationwide_referral(self, mock_create):
@@ -403,7 +403,7 @@ class TestLeadPipeline:
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
                 "pickup_zip": "33028"}  # FL → in_service_area=False
         run_pipeline("new_lead", lead)
-        mock_create.assert_not_called()
+        mock_create.assert_called_once()  # out-of-area leads also go to SmartMoving
         mock_hm.assert_called_once()
 
     @patch("pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
@@ -575,7 +575,7 @@ class TestSendToGranot:
                 "pickup_zip": "33028", "delivery_zip": "10001"}  # FL → not in service
         result = run_pipeline("new_lead", lead)
         mock_hm.assert_called_once()
-        mock_sm.assert_not_called()
+        mock_sm.assert_called_once()  # out-of-area leads also go to SmartMoving
         assert result["granot_ok"] is True
         mock_sheet.assert_called_once()
 

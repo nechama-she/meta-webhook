@@ -25,7 +25,7 @@ def send_to_moving_crm(data: dict) -> dict:
     print(f"Moving CRM: facebook_user_id={facebook_user_id}")
 
     # Parse smartmoving_id from the SmartMoving response
-    sm_raw = data.get("smartmoving_lead_id", "")
+    sm_raw = data.get("smartmoving_HHG_lead_id", "")
     try:
         sm_result = json.loads(sm_raw)
         smartmoving_id = sm_result.get("leadId", sm_raw) if isinstance(sm_result, dict) else sm_raw.strip('"')
