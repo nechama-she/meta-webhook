@@ -10,6 +10,11 @@ _CAMPAIGN_REFERRAL = {
     "Northeast-Midwest": "Facebook-Gorilla-HHG-Nationwide",
     "FL-GA-NC": "Facebook-Gorilla-HHG-FL-GA-NC",
 }
+_PAGE_REFERRAL = {
+    "340823849673554": "Facebook-Movers95",
+    "1037282016129017": "Facebook-Simple Moving Campaign",
+    "517722408094755": "Facebook-Wilson Bros-HHG",
+}
 
 
 def _clean_phone(phone: str) -> str:
@@ -32,6 +37,7 @@ def _build_payload(data: dict) -> dict:
     move_date = data.get("move_date", "")
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
     campaign = data.get("campaign", "")
+    page_id = str(data.get("page_id") or "").strip()
     pushed_by = f"lambda:{os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'unknown')}"
 
     message = (
@@ -58,7 +64,7 @@ def _build_payload(data: dict) -> dict:
         f"message: {message}"
     )
 
-    referral_source = _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    referral_source = _PAGE_REFERRAL.get(page_id) or _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
 
     return {
         "fullName": full_name,
@@ -75,56 +81,33 @@ def _build_payload(data: dict) -> dict:
     }
 
 
-def send_to_smartmoving_by_branch(data: dict, branch_env_var: str, company_name: str, field_name: str) -> dict:
-    """Send lead to SmartMoving using specified branch ID from environment.
+def send_to_smartmoving_by_branch(data: dict) -> dict:
+    """Send lead to SmartMoving using branch ID from lead/company data."""
+    branch_id = str(data.get("smartmoving_branch_id") or "").strip()
+    company_name = data.get("company_name", "Unknown")
 
-    Args:
-        data: Lead data dict
-        branch_env_var: Environment variable name for branch ID (e.g., "SMARTMOVING_WILSON_BRANCH_ID")
-        company_name: Company name for logging (e.g., "Wilson")
-        field_name: Field name to store result in data dict (e.g., "smartmoving_wilson_lead_id")
-
-    Returns the data dict (possibly enriched with the result field).
-    """
-    branch_id = os.environ.get(branch_env_var, "") if branch_env_var else ""
-    payload = _build_payload(data)
-    print(f"SmartMoving {company_name} payload: {payload}")
-
-    if branch_id:
-        result = create_lead(payload, branch_id=branch_id)
-    elif not branch_env_var:
-        # Explicit primary-branch mode when no branch env var is provided.
-        result = create_lead(payload)
-    else:
-        print(f"SmartMoving {company_name}: {branch_env_var} not set, skipping")
+    if not branch_id:
+        print(f"SmartMoving: no smartmoving_branch_id for company={company_name}, skipping")
         return data
 
+    payload = _build_payload(data)
+    data["referral_source"] = payload.get("referralSource", "")
+    print(f"SmartMoving {company_name} payload: {payload}")
+    result = create_lead(payload, branch_id=branch_id)
+
     if result:
-        data[field_name] = result
+        data["smartmoving_lead_id"] = result
     return data
 
 
 def send_to_smartmoving(data: dict) -> dict:
-    """Send lead to SmartMoving using the Gorilla branch.
+    """Send lead to SmartMoving primary account (no branch)."""
+    data["company_name"] = "Household Goods Moving And Storage"
+    payload = _build_payload(data)
+    data["referral_source"] = payload.get("referralSource", "")
+    print("SmartMoving Primary payload: sending without branch_id")
+    result = create_lead(payload)
+    if result:
+        data["smartmoving_lead_id"] = result
+    return data
 
-    Returns the data dict (possibly enriched with smartmoving_lead_id).
-    """
-    return send_to_smartmoving_by_branch(
-        data,
-        branch_env_var="",
-        company_name="Primary",
-        field_name="smartmoving_HHG_lead_id",
-    )
-
-
-def send_to_smartmoving_wilson(data: dict) -> dict:
-    """Send lead to SmartMoving using the Wilson Bros branch.
-
-    Returns the data dict (possibly enriched with smartmoving_wilson_lead_id).
-    """
-    return send_to_smartmoving_by_branch(
-        data,
-        branch_env_var="SMARTMOVING_WILSON_BRANCH_ID",
-        company_name="Wilson",
-        field_name="smartmoving_wilson_lead_id",
-    )
