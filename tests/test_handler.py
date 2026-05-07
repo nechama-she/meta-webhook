@@ -209,7 +209,10 @@ class TestLeadPollService:
     @pytest.fixture(autouse=True)
     def _env(self):
         with patch.dict(os.environ, ENV_VARS), \
-             patch("lead_poll_service.PAGE_IDS", ["p1", "p2"]):
+             patch("lead_poll_service.get_companies", return_value=[
+                 {"id": "c1", "name": "Company 1", "facebook_page_id": "p1", "smartmoving_branch_id": "b1"},
+                 {"id": "c2", "name": "Company 2", "facebook_page_id": "p2", "smartmoving_branch_id": "b2"},
+             ]):
             yield
 
     @patch("lead_poll_service.run_pipeline")
@@ -263,8 +266,8 @@ class TestLeadPollService:
         assert count == 0
         mock_save.assert_not_called()
 
-    @patch("lead_poll_service.PAGE_IDS", [])
-    def test_poll_no_pages_configured(self):
+    @patch("lead_poll_service.get_companies", return_value=[])
+    def test_poll_no_pages_configured(self, mock_get_companies):
         from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
@@ -334,7 +337,7 @@ class TestSmartMovingAction:
         assert payload["originZip"] == "20001"
         assert payload["destinationZip"] == "10001"
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-Local"
-        assert result["smartmoving_HHG_lead_id"] == '"abc-123"'
+        assert result["smartmoving_lead_id"] == '"abc-123"'
 
     @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
     def test_campaign_sets_nationwide_referral(self, mock_create):
@@ -362,22 +365,6 @@ class TestSmartMovingAction:
         from pipeline.actions.smartmoving import _clean_phone
         assert _clean_phone("5551234567") == "5551234567"
 
-    @patch("pipeline.actions.smartmoving.create_lead", return_value='"wil-99"')
-    def test_send_to_smartmoving_wilson_uses_branch_id(self, mock_create):
-        with patch.dict(os.environ, {"SMARTMOVING_WILSON_BRANCH_ID": "wilson-branch-123"}):
-            from pipeline.actions.smartmoving import send_to_smartmoving_wilson
-            result = send_to_smartmoving_wilson(self._make_lead())
-            mock_create.assert_called_once()
-            assert mock_create.call_args[1]["branch_id"] == "wilson-branch-123"
-            assert result["smartmoving_wilson_lead_id"] == '"wil-99"'
-
-    @patch("pipeline.actions.smartmoving.create_lead")
-    def test_send_to_smartmoving_wilson_skips_when_not_configured(self, mock_create):
-        with patch.dict(os.environ, {"SMARTMOVING_WILSON_BRANCH_ID": ""}):
-            from pipeline.actions.smartmoving import send_to_smartmoving_wilson
-            result = send_to_smartmoving_wilson(self._make_lead())
-            mock_create.assert_not_called()
-            assert "smartmoving_wilson_lead_id" not in result
 
 
 class TestLeadPipeline:
@@ -391,7 +378,7 @@ class TestLeadPipeline:
     def test_in_service_area_runs_smartmoving(self, mock_create):
         from pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
-                "pickup_zip": "10001"}  # not in NC/SC/GA/FL/TN → in_service_area=True
+            "pickup_zip": "10001", "smartmoving_branch_id": "branch-1", "company_name": "TestCo", "page_id": "101598038182773"}  # not in NC/SC/GA/FL/TN → in_service_area=True
         run_pipeline("new_lead", lead)
         mock_create.assert_called_once()
 
@@ -401,7 +388,7 @@ class TestLeadPipeline:
     def test_out_of_service_area_skips_smartmoving(self, mock_create, mock_hm, mock_sheet):
         from pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
-                "pickup_zip": "33028"}  # FL → in_service_area=False
+                "pickup_zip": "33028", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # FL → in_service_area=False
         run_pipeline("new_lead", lead)
         mock_create.assert_called_once()  # out-of-area leads also go to SmartMoving
         mock_hm.assert_called_once()
@@ -424,7 +411,7 @@ class TestLeadPipeline:
     def test_branch_sets_flag_on_data(self, mock_hm, mock_sheet):
         from pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
-                "pickup_zip": "27510"}  # NC → not in service
+                "pickup_zip": "27510", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # NC → not in service
         result = run_pipeline("new_lead", lead)
         assert result["in_service_area"] is False
 
@@ -572,7 +559,7 @@ class TestSendToGranot:
     def test_pipeline_out_of_service_calls_granot(self, mock_sm, mock_hm, mock_sheet):
         from pipeline import run_pipeline
         lead = {"leadgen_id": "L1", "full_name": "Test User", "phone_number": "5551234567",
-                "pickup_zip": "33028", "delivery_zip": "10001"}  # FL → not in service
+                "pickup_zip": "33028", "delivery_zip": "10001", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # FL → not in service
         result = run_pipeline("new_lead", lead)
         mock_hm.assert_called_once()
         mock_sm.assert_called_once()  # out-of-area leads also go to SmartMoving

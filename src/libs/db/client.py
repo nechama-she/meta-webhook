@@ -199,7 +199,7 @@ def save_lead_if_new(item: dict) -> bool:
         return False
 
 
-_LEAD_UPDATE_FIELDS = ("smartmoving_HHG_lead_id", "smartmoving_wilson_lead_id", "granot_id")
+_LEAD_UPDATE_FIELDS = ("smartmoving_lead_id", "granot_id")
 
 
 def update_lead(item: dict) -> None:

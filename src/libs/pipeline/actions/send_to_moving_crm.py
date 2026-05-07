@@ -6,8 +6,7 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timezone
 
-from crm.moving_crm import get_company
-from pipeline.actions.smartmoving import _clean_phone, _CAMPAIGN_REFERRAL, _DEFAULT_REFERRAL
+from pipeline.actions.smartmoving import _clean_phone
 
 _CRM_URL = "https://m6efygcjve.execute-api.us-east-1.amazonaws.com/api/leads"
 _CRM_API_SECRET = os.environ.get("MOVING_CRM_API_SECRET", "")
@@ -25,7 +24,7 @@ def send_to_moving_crm(data: dict) -> dict:
     print(f"Moving CRM: facebook_user_id={facebook_user_id}")
 
     # Parse smartmoving_id from the SmartMoving response
-    sm_raw = data.get("smartmoving_HHG_lead_id", "")
+    sm_raw = data.get("smartmoving_lead_id", "")
     try:
         sm_result = json.loads(sm_raw)
         smartmoving_id = sm_result.get("leadId", sm_raw) if isinstance(sm_result, dict) else sm_raw.strip('"')
@@ -34,15 +33,13 @@ def send_to_moving_crm(data: dict) -> dict:
 
     phone = _clean_phone(data.get("phone_number", ""))
     campaign = data.get("campaign", "")
-    referral_source = _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    referral_source = data.get("referral_source", "")
 
     ozip = data.get("pickup_zip", data.get("ozip", ""))
     dzip = data.get("delivery_zip", data.get("dzip", ""))
     move_date = data.get("move_date", "")
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
-    company_id = data.get("company_id") or data.get("page_id") or ""
-    company = get_company(str(company_id)) if company_id else None
-    company_name = (company or {}).get("name") or ""
+    company_name = data.get("company_name", "")
 
     note = (
         f"email: {data.get('email', '')}. "

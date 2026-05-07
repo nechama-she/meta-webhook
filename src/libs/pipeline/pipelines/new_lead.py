@@ -6,7 +6,10 @@ from pipeline.actions.date_parser import format_move_date
 from pipeline.actions.log_to_borat_sheet import log_to_borat_sheet
 from pipeline.actions.send_to_granot import send_to_granot
 from pipeline.actions.send_to_moving_crm import send_to_moving_crm
-from pipeline.actions.smartmoving import send_to_smartmoving
+from pipeline.actions.smartmoving import send_to_smartmoving, send_to_smartmoving_by_branch
+
+# Gorilla Haulers - the only company that can send to main SmartMoving branch
+_GORILLA_PAGE_ID = "101598038182773"
 
 
 # Fields that should NOT have underscores replaced
@@ -26,14 +29,25 @@ def _normalize_facebook_fields(data: dict) -> dict:
     return data
 
 
+def _scope_in_service_area(data: dict) -> dict:
+    """Apply in_service_area check only to Gorilla Haulers (primary company)."""
+    page_id = data.get("page_id", "")
+    if page_id == _GORILLA_PAGE_ID:
+        check_pickup_zip(data)
+    else:
+        # Non-Gorilla companies always use their own company branch
+        data["in_service_area"] = True
+    return data
+
+
 ACTIONS = [
-    check_pickup_zip,
+    _scope_in_service_area,
     format_move_date,
     _normalize_facebook_fields,
     Branch(
         "in_service_area",
         if_true=[
-            send_to_smartmoving,
+            send_to_smartmoving_by_branch,
             send_to_moving_crm,
         ],
         if_false=[
