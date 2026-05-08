@@ -29,7 +29,7 @@ def poll_leads() -> int:
         company_id = company.get("id")
         company_name = company.get("name", "")
         page_id = company.get("facebook_page_id")
-        branch_id = company.get("smartmoving_branch_id")
+        branch_id = company.get("smartmoving_branch_id") or company.get("samrtmoving_branch_id")
         
         if not page_id:
             print(f"Lead poll: company {company_id} ({company_name}) has no facebook_page_id, skipping")
