@@ -29,7 +29,7 @@ def request(
     
     print(f"HTTP REQUEST: {method} {url}")
     if body:
-        print(f"HTTP REQUEST body: {body.decode('utf-8', 'ignore')[:200]}")
+        print(f"HTTP REQUEST body: {body.decode('utf-8', 'ignore')}")
     
     req = urllib.request.Request(
         url,
@@ -41,7 +41,7 @@ def request(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
-            print(f"HTTP RESPONSE: {resp.status} {raw[:200]}")
+            print(f"HTTP RESPONSE: {resp.status} {raw}")
             
             # Try to parse as JSON
             try:
@@ -51,7 +51,7 @@ def request(
                 
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", "ignore")
-        print(f"HTTP ERROR: {exc.code} {error_body[:200]}")
+        print(f"HTTP ERROR: {exc.code} {error_body}")
         return None
     except Exception as exc:
         print(f"HTTP ERROR: {repr(exc)}")

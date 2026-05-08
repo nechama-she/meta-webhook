@@ -6,6 +6,7 @@ import boto3
 from datetime import datetime, timedelta
 
 from http_client import request
+from db import cache_get, cache_set
 
 _BASE_URL = os.environ.get("MOVING_CRM_API_BASE_URL", "")
 _ADMIN_EMAIL = os.environ.get("MOVING_CRM_ADMIN_EMAIL", "admin@gorillamove.com")
@@ -14,7 +15,7 @@ _ADMIN_PASSWORD_PARAM = os.environ.get(
     "/meta-webhook/MOVINGCRM_ADMIN_PASSWORD",
 )
 _AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-_CACHE_TABLE = os.environ.get("DYNAMODB_TABLE", "meta-webhook")
+_COMPANIES_CACHE_KEY = "moving_crm_companies_cache"
 
 _admin_password_cache: str | None = None
 _admin_token_cache: str | None = None
@@ -57,10 +58,8 @@ def _extract_token(payload: dict | None) -> str | None:
 def _get_cached_companies() -> list[dict] | None:
     """Get cached companies from DynamoDB if not expired (< 24 hours old)."""
     try:
-        dynamodb = boto3.resource("dynamodb", region_name=_AWS_REGION)
-        table = dynamodb.Table(_CACHE_TABLE)
-        resp = table.get_item(Key={"id": "moving_crm_companies_cache"})
-        item = resp.get("Item")
+        raw = cache_get(_COMPANIES_CACHE_KEY)
+        item = json.loads(raw) if raw else None
         if not item:
             return None
         
@@ -88,14 +87,14 @@ def _get_cached_companies() -> list[dict] | None:
 def _cache_companies(companies: list[dict]) -> None:
     """Cache companies list in DynamoDB."""
     try:
-        dynamodb = boto3.resource("dynamodb", region_name=_AWS_REGION)
-        table = dynamodb.Table(_CACHE_TABLE)
-        table.put_item(
-            Item={
-                "id": "moving_crm_companies_cache",
-                "companies": companies,
-                "cached_at": datetime.utcnow().isoformat(),
-            }
+        cache_set(
+            _COMPANIES_CACHE_KEY,
+            json.dumps(
+                {
+                    "companies": companies,
+                    "cached_at": datetime.utcnow().isoformat(),
+                }
+            ),
         )
         print(f"Moving CRM companies: cached {len(companies)} companies")
     except Exception as exc:
