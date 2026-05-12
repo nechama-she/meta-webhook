@@ -71,7 +71,6 @@ def _fetch_page_token(page_id: str) -> str:
         print(f"Meta /me/accounts HTTP error {exc.code}: {error_body}")
         raise
 
-    print(f"Meta /me/accounts parsed data: {json.dumps(data, indent=2)}")
     print(f"Meta /me/accounts returned {len(data.get('data', []))} pages")
 
     for page in data.get("data", []):
