@@ -230,8 +230,12 @@ def _fetch_leadgen_forms(page_id: str, token: str) -> list[dict]:
         f"?fields=id,name,status&access_token={token}"
     )
     while url:
+        log_url = url.split("access_token=")[0] + "access_token=***"
+        print(f"GET {log_url}")
         with urllib.request.urlopen(url, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+        print(f"Response: {raw}")
+        data = json.loads(raw)
         for form in data.get("data", []):
             if form.get("status") == "ACTIVE":
                 forms.append(form)
@@ -254,7 +258,8 @@ def get_leadgen_forms(page_id: str) -> list[dict]:
                 print(f"Error fetching leadgen forms for page {page_id}: {repr(exc2)}")
                 return []
         else:
-            print(f"Error fetching leadgen forms for page {page_id}: {repr(exc)}")
+            body = exc.read().decode("utf-8", "ignore")
+            print(f"Error fetching leadgen forms for page {page_id}: HTTP {exc.code} {body}")
             return []
     except Exception as exc:
         print(f"Error fetching leadgen forms for page {page_id}: {repr(exc)}")
@@ -271,8 +276,12 @@ def _fetch_form_leads(form_id: str, filtering: str, token: str) -> list[dict]:
         f"&access_token={token}"
     )
     while url:
+        log_url = url.split("access_token=")[0] + "access_token=***"
+        print(f"GET {log_url}")
         with urllib.request.urlopen(url, timeout=15) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+        print(f"Response: {raw}")
+        data = json.loads(raw)
         leads.extend(data.get("data", []))
         url = data.get("paging", {}).get("next")
     return leads
@@ -296,7 +305,8 @@ def get_form_leads(form_id: str, page_id: str, since_timestamp: int) -> list[dic
                 print(f"Error fetching leads from form {form_id}: {repr(exc2)}")
                 return []
         else:
-            print(f"Error fetching leads from form {form_id}: {repr(exc)}")
+            body = exc.read().decode("utf-8", "ignore")
+            print(f"Error fetching leads from form {form_id}: HTTP {exc.code} {body}")
             return []
     except Exception as exc:
         print(f"Error fetching leads from form {form_id}: {repr(exc)}")
