@@ -5,7 +5,7 @@ import re
 import uuid
 
 from ai import chat_reply
-from aircall import send_sms
+from aircall import send_sms, trigger_outbound_call
 from crm.smartmoving_notes import add_note
 from db import try_claim_dedupe_key, save_sms_message, save_pending_note
 from db.rds_client import get_smartmoving_id_by_phone
@@ -16,6 +16,7 @@ ENABLE_OPENAI_ANSWER = (
 
 _GORILLA_NUMBER_ID = 645873
 _TEST_PHONE = "+12403703417"
+_OUTBOUND_CALL_AGENT_ID = "01KRESSHNZ47WSGHN4AS433F21"
 
 
 def _normalize_phone(raw: str) -> str:
@@ -98,6 +99,23 @@ def handle_aircall_message(body: dict) -> None:
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
+        return
+
+    # Trigger outbound call for test phone when text is "call me"
+    if phone_number == _TEST_PHONE and text.lower().strip() == "call me":
+        print(f"Aircall: triggering outbound call for {phone_number}")
+        trigger_outbound_call(
+            agent_id=_OUTBOUND_CALL_AGENT_ID,
+            contact_phone=phone_number,
+            idempotency_key=f"test-{re.sub(r'[^\d]', '', phone_number)}-{message_id}",
+            context={
+                "contact_name": "John",
+                "pickup": "New York",
+                "delivery": "Los Angeles",
+                "move_date": "March 15th",
+                "home_size": "3 bedroom apartment",
+            },
+        )
         return
 
     # Keep AI auto-reply scoped to Gorilla number only.
