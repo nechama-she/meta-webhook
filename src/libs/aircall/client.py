@@ -49,3 +49,30 @@ def send_sms(number_id: int, to: str, text: str) -> str | None:
     except Exception as exc:
         print(f"Aircall send_sms error: {repr(exc)}")
         return None
+
+
+def trigger_outbound_call(agent_id: str, contact_phone: str, idempotency_key: str, context: dict) -> None:
+    """Trigger an outbound call via Aircall agent webhook."""
+    url = f"{_BASE_URL}/outbound-calls/agents/{agent_id}"
+    body = json.dumps({
+        "contact_phone": contact_phone,
+        "idempotency_key": idempotency_key,
+        "context": context,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Authorization": _auth_header(),
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8")
+            print(f"Aircall outbound call triggered for {contact_phone}: {raw}")
+    except urllib.error.HTTPError as exc:
+        print(f"Aircall trigger_outbound_call error: {exc.code} {exc.read().decode()}")
+    except Exception as exc:
+        print(f"Aircall trigger_outbound_call error: {repr(exc)}")
