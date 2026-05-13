@@ -42,7 +42,7 @@ def poll_leads() -> int:
         print(f"Lead poll: polling company {company_id} ({company_name}) page_id={page_id} branch_id={branch_id}")
         
         try:
-            forms = get_leadgen_forms(page_id)
+            forms = get_leadgen_forms(page_id, company_name)
             for form in forms:
                 form_id = form.get("id")
                 if not form_id:
