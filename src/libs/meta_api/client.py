@@ -243,8 +243,9 @@ def _fetch_leadgen_forms(page_id: str, token: str) -> list[dict]:
     return forms
 
 
-def get_leadgen_forms(page_id: str) -> list[dict]:
+def get_leadgen_forms(page_id: str, page_name: str = "") -> list[dict]:
     """Return only **active** leadgen forms for *page_id*."""
+    page_label = f"{page_id} ({page_name})" if page_name else page_id
     token = get_page_token(page_id)
     try:
         forms = _fetch_leadgen_forms(page_id, token)
@@ -255,16 +256,16 @@ def get_leadgen_forms(page_id: str) -> list[dict]:
             try:
                 forms = _fetch_leadgen_forms(page_id, token)
             except Exception as exc2:
-                print(f"Error fetching leadgen forms for page {page_id}: {repr(exc2)}")
+                print(f"Error fetching leadgen forms for page {page_label}: {repr(exc2)}")
                 return []
         else:
             body = exc.read().decode("utf-8", "ignore")
-            print(f"Error fetching leadgen forms for page {page_id}: HTTP {exc.code} {body}")
+            print(f"Error fetching leadgen forms for page {page_label}: HTTP {exc.code} {body}")
             return []
     except Exception as exc:
-        print(f"Error fetching leadgen forms for page {page_id}: {repr(exc)}")
+        print(f"Error fetching leadgen forms for page {page_label}: {repr(exc)}")
         return []
-    print(f"Found {len(forms)} active leadgen forms for page {page_id}")
+    print(f"Found {len(forms)} active leadgen forms for page {page_label}")
     return forms
 
 
