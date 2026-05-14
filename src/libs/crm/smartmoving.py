@@ -4,17 +4,16 @@ import json
 import urllib.request
 import urllib.error
 
-from crm.config import SMARTMOVING_PROVIDER_KEY, SMARTMOVING_GORILLA_BRANCH_ID
+from crm.config import SMARTMOVING_PROVIDER_KEY
 
 _BASE_URL = "https://api.smartmoving.com/api/leads/from-provider/v2"
 
 
 def create_lead(payload: dict, branch_id: str | None = None) -> str | None:
     """POST a lead to SmartMoving and return the lead ID (or None on error)."""
-    bid = branch_id or SMARTMOVING_GORILLA_BRANCH_ID
     url = f"{_BASE_URL}?providerKey={SMARTMOVING_PROVIDER_KEY}"
-    if bid:
-        url = f"{url}&branchId={bid}"
+    if branch_id:
+        url = f"{url}&branchId={branch_id}"
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
