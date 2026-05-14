@@ -8,7 +8,7 @@ from ai import chat_reply
 from aircall import send_sms, trigger_outbound_call
 from crm.smartmoving_notes import add_note
 from db import try_claim_dedupe_key, save_sms_message, save_pending_note
-from db.rds_client import get_smartmoving_id_by_phone
+from db.rds_client import get_smartmoving_id_by_phone, get_lead_id_by_phone
 
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
@@ -128,6 +128,9 @@ def handle_aircall_message(body: dict) -> None:
     chat_user_id = re.sub(r"\D", "", phone_number)
     if chat_user_id.startswith("1") and len(chat_user_id) == 11:
         chat_user_id = chat_user_id[1:]
+    lead_id = get_lead_id_by_phone(chat_user_id)
+    if lead_id:
+        chat_user_id = f"{lead_id}_{chat_user_id}"
     print(f"Aircall: Calling chat API for {chat_user_id}")
     answer = chat_reply(chat_user_id, text, "sms")
     if not answer:
