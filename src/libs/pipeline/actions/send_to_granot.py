@@ -69,7 +69,9 @@ def send_to_granot(data: dict) -> dict:
     }
 
     print(f"Granot payload: {payload}")
-    result = send_lead(payload)
+    result = send_lead(payload,
+                       api_id=data.get("granot_api_id", ""),
+                       mover_ref=data.get("granot_mover_ref", ""))
     data["granot_ok"] = result is not None and "OK" in result
     data["granot_id"] = result or ""
     return data

@@ -30,16 +30,18 @@ def poll_leads() -> int:
         company_name = company.get("name", "")
         page_id = company.get("facebook_page_id")
         branch_id = company.get("smartmoving_branch_id") or company.get("samrtmoving_branch_id")
+        granot_api_id = company.get("granot_api_id", "")
+        granot_mover_ref = company.get("granot_mover_ref", "")
         
         if not page_id:
             print(f"Lead poll: company {company_id} ({company_name}) has no facebook_page_id, skipping")
             continue
         
-        if not branch_id:
-            print(f"Lead poll: company {company_id} ({company_name}) has no smartmoving_branch_id, skipping")
+        if not branch_id and not (granot_api_id and granot_mover_ref):
+            print(f"Lead poll: company {company_id} ({company_name}) has no smartmoving_branch_id or granot credentials, skipping")
             continue
         
-        print(f"Lead poll: polling company {company_id} ({company_name}) page_id={page_id} branch_id={branch_id}")
+        print(f"Lead poll: polling company {company_id} ({company_name}) page_id={page_id} branch_id={branch_id} granot={bool(granot_api_id)}")
         
         try:
             forms = get_leadgen_forms(page_id, company_name)
@@ -63,6 +65,8 @@ def poll_leads() -> int:
                         "company_id": company_id,
                         "company_name": company_name,
                         "smartmoving_branch_id": branch_id,
+                        "granot_api_id": granot_api_id,
+                        "granot_mover_ref": granot_mover_ref,
                     }
                     for field in lead.get("field_data", []):
                         name = field.get("name", "")
