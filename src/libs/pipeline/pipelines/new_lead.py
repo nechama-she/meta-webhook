@@ -40,6 +40,16 @@ def _scope_in_service_area(data: dict) -> dict:
     return data
 
 
+def _send_to_crm_by_company(data: dict) -> dict:
+    """Route to SmartMoving or Granot based on company configuration."""
+    if data.get("smartmoving_branch_id"):
+        return send_to_smartmoving_by_branch(data)
+    if data.get("granot_api_id") and data.get("granot_mover_ref"):
+        return send_to_granot(data)
+    print(f"CRM routing: no SmartMoving branch or Granot credentials for company={data.get('company_name')}, skipping")
+    return data
+
+
 ACTIONS = [
     _scope_in_service_area,
     format_move_date,
@@ -47,13 +57,14 @@ ACTIONS = [
     Branch(
         "in_service_area",
         if_true=[
-            send_to_smartmoving_by_branch,
+            _send_to_crm_by_company,
             send_to_moving_crm,
         ],
         if_false=[
             send_to_granot,
             log_to_borat_sheet,
             send_to_smartmoving,
+            send_to_moving_crm,
         ],
     ),
 ]

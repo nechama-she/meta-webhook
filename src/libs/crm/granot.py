@@ -8,15 +8,15 @@ import urllib.error
 _BASE_URL = "https://lead.hellomoving.com/LEADSGWHTTP.lidgw"
 
 
-def send_lead(payload: dict) -> str | None:
+def send_lead(payload: dict, api_id: str = "", mover_ref: str = "") -> str | None:
     """POST a lead to Granot and return the response text (or None on error)."""
-    api_id = os.environ.get("GRANOT_API_ID", "")
-    mover_ref = os.environ.get("GRANOT_MOVER_REF", "")
-    if not api_id or not mover_ref:
+    resolved_api_id = api_id or os.environ.get("GRANOT_API_ID", "")
+    resolved_mover_ref = mover_ref or os.environ.get("GRANOT_MOVER_REF", "")
+    if not resolved_api_id or not resolved_mover_ref:
         print("Granot: API_ID or MOVER_REF not configured, skipping")
         return None
 
-    params = urllib.parse.urlencode({"API_ID": api_id, "MOVERREF": mover_ref})
+    params = urllib.parse.urlencode({"API_ID": resolved_api_id, "MOVERREF": resolved_mover_ref})
     url = f"{_BASE_URL}?{params}"
     body = urllib.parse.urlencode(payload).encode("latin-1", "ignore")
     req = urllib.request.Request(
