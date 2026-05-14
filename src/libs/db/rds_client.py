@@ -61,6 +61,42 @@ def get_smartmoving_id(facebook_user_id: str) -> str | None:
         return None
 
 
+def get_lead_id_by_facebook_user_id(facebook_user_id: str) -> str | None:
+    """Look up the lead PK (id) for a given facebook_user_id."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM leads WHERE facebook_user_id = %s LIMIT 1",
+                (facebook_user_id,),
+            )
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+    except Exception as exc:
+        print(f"RDS lead_id lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
+def get_lead_id_by_phone(phone: str) -> str | None:
+    """Look up the lead PK (id) for a given phone number (digits, no country code)."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM leads WHERE phone = %s LIMIT 1",
+                (phone,),
+            )
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+    except Exception as exc:
+        print(f"RDS lead_id by phone lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
 def get_smartmoving_id_by_phone(phone: str) -> str | None:
     """Look up the smartmoving_id for a given phone number.
 

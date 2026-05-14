@@ -6,6 +6,7 @@ import uuid
 from ai import chat_reply
 from crm.moving_crm import get_company
 from db import try_claim_dedupe_key, save_sender_info
+from db.rds_client import get_lead_id_by_facebook_user_id
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
 from services.conversation_service import save_message
@@ -160,7 +161,9 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
 
     # 3. Call chat API (dry run – save reply but don't send to client)
     print("Step 3: Calling chat API...")
-    answer = chat_reply(sender_id, text, "messenger")
+    lead_id = get_lead_id_by_facebook_user_id(sender_id)
+    chat_user_id = f"{lead_id}_{sender_id}" if lead_id else sender_id
+    answer = chat_reply(chat_user_id, text, "messenger")
     if answer:
         save_message(
             user_id=sender_id,
