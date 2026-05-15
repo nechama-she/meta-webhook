@@ -208,3 +208,39 @@ def get_companies() -> list[dict]:
     _cache_companies(data)
     
     return data
+
+
+def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
+    """Return True if a lead with this leadgen_id exists in Moving CRM."""
+    global _admin_token_cache
+
+    if not _BASE_URL or not leadgen_id:
+        return False
+
+    token = _admin_token_cache or _login()
+    if not token:
+        return False
+
+    url = f"{_BASE_URL.rstrip('/')}/api/leads/by-leadgen/{leadgen_id}"
+    try:
+        payload = request(
+            url,
+            method="GET",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if payload is None:
+            _admin_token_cache = None
+            refreshed = _login()
+            if not refreshed:
+                return False
+            payload = request(
+                url,
+                method="GET",
+                headers={"Authorization": f"Bearer {refreshed}"},
+                timeout=10,
+            )
+        return payload is not None
+    except Exception as exc:
+        print(f"Moving CRM lead_exists_by_leadgen_id error: {repr(exc)}")
+        return False

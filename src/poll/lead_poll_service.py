@@ -4,9 +4,8 @@ import time
 
 from meta_api import get_leadgen_forms, get_form_leads
 from db import save_lead_if_new, update_lead
-from db.rds_client import lead_exists_by_leadgen_id
 from pipeline import run_pipeline
-from crm.moving_crm import get_companies
+from crm.moving_crm import get_companies, lead_exists_by_leadgen_id
 
 LEAD_POLL_LOOKBACK_MINUTES = 30
 
