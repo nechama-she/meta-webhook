@@ -48,7 +48,6 @@ def graph_api_request(
 
 from db import cache_get, cache_set
 
-_page_token_cache: dict[str, str] = {}
 _CACHE_PREFIX = "page_token:"
 
 
@@ -77,7 +76,6 @@ def _fetch_page_token(page_id: str) -> str:
         print(f"  Page: id={page.get('id')}, name={page.get('name')}")
         if page.get("id") == page_id:
             token = page["access_token"]
-            _page_token_cache[page_id] = token
             cache_set(f"{_CACHE_PREFIX}{page_id}", token)
             print(f"Page token fetched from Meta for {page_id}")
             return token
@@ -86,21 +84,18 @@ def _fetch_page_token(page_id: str) -> str:
 
 
 def get_page_token(page_id: str) -> str:
-    """Return page token from memory, DynamoDB, or Meta (in that order)."""
-    if page_id in _page_token_cache:
-        return _page_token_cache[page_id]
-
+    """Return page token from DynamoDB cache or Meta."""
     cached = cache_get(f"{_CACHE_PREFIX}{page_id}")
     if cached:
-        _page_token_cache[page_id] = cached
+        print(f"Page token: DynamoDB cache hit for {page_id}")
         return cached
 
+    print(f"Page token: no cache found for {page_id}, fetching from Meta")
     return _fetch_page_token(page_id)
 
 
 def _invalidate_page_token(page_id: str) -> None:
-    """Remove cached token from memory and DynamoDB."""
-    _page_token_cache.pop(page_id, None)
+    """Remove cached token from DynamoDB."""
     cache_set(f"{_CACHE_PREFIX}{page_id}", "")
 
 
