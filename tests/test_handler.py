@@ -242,18 +242,18 @@ class TestLeadPollService:
         assert saved_item["full_name"] == "Jane Doe"
         assert saved_item["source"] == "poll"
 
-    @patch("lead_poll_service.save_lead_if_new", return_value=False)
+    @patch("lead_poll_service.lead_exists_by_leadgen_id", return_value=True)
     @patch("lead_poll_service.get_form_leads", return_value=[
         {"id": "L50", "field_data": []},
     ])
     @patch("lead_poll_service.get_leadgen_forms", return_value=[
         {"id": "F1"},
     ])
-    def test_poll_duplicate_leads_not_counted(self, mock_forms, mock_leads, mock_save):
+    def test_poll_duplicate_leads_not_counted(self, mock_forms, mock_leads, mock_exists):
         from lead_poll_service import poll_leads
         count = poll_leads()
         assert count == 0
-        mock_save.assert_called()
+        mock_exists.assert_called()
 
     @patch("lead_poll_service.save_lead_if_new")
     @patch("lead_poll_service.get_form_leads", return_value=[])
