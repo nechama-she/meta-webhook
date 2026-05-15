@@ -104,10 +104,11 @@ def handle_aircall_message(body: dict) -> None:
     # Trigger outbound call for test phone when text is "call me"
     if phone_number == _TEST_PHONE and text.lower().strip() == "call me":
         print(f"Aircall: triggering outbound call for {phone_number}")
+        digits_only = re.sub(r'[^\d]', '', phone_number)
         trigger_outbound_call(
             agent_id=_OUTBOUND_CALL_AGENT_ID,
             contact_phone=phone_number,
-            idempotency_key=f"test-{re.sub(r'[^\d]', '', phone_number)}-{message_id}",
+            idempotency_key=f"test-{digits_only}-{message_id}",
             context={
                 "contact_name": "John",
                 "pickup": "New York",
