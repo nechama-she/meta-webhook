@@ -61,6 +61,23 @@ def get_smartmoving_id(facebook_user_id: str) -> str | None:
         return None
 
 
+def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
+    """Return True if a lead with this leadgen_id already exists in RDS."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM leads WHERE leadgen_id = %s LIMIT 1",
+                (leadgen_id,),
+            )
+            return cur.fetchone() is not None
+    except Exception as exc:
+        print(f"RDS leadgen_id check error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False
+
+
 def get_lead_id_by_facebook_user_id(facebook_user_id: str) -> str | None:
     """Look up the lead PK (id) for a given facebook_user_id."""
     try:

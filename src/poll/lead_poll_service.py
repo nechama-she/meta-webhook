@@ -4,6 +4,7 @@ import time
 
 from meta_api import get_leadgen_forms, get_form_leads
 from db import save_lead_if_new, update_lead
+from db.rds_client import lead_exists_by_leadgen_id
 from pipeline import run_pipeline
 from crm.moving_crm import get_companies
 
@@ -73,11 +74,14 @@ def poll_leads() -> int:
                         values = field.get("values", [])
                         item[name] = values[0] if len(values) == 1 else values
 
-                    if save_lead_if_new(item):
-                        print(f"NEW_LEAD_FOUND | leadgen_id={leadgen_id} | company={company_name} | page_id={page_id} | form_id={form_id}")
-                        run_pipeline("new_lead", item)
-                        update_lead(item)
-                        total_saved += 1
+                    if lead_exists_by_leadgen_id(leadgen_id):
+                        print(f"Lead poll: lead {leadgen_id} already exists in RDS, skipping")
+                        continue
+                    save_lead_if_new(item)
+                    print(f"NEW_LEAD_FOUND | leadgen_id={leadgen_id} | company={company_name} | page_id={page_id} | form_id={form_id}")
+                    run_pipeline("new_lead", item)
+                    update_lead(item)
+                    total_saved += 1
         except Exception as exc:
             print(f"Lead poll: error processing company {company_id} ({company_name}): {repr(exc)}")
 
