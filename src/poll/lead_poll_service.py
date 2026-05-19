@@ -7,7 +7,7 @@ from db import save_lead_if_new, update_lead
 from pipeline import run_pipeline
 from crm.moving_crm import get_companies, lead_exists_by_leadgen_id
 
-LEAD_POLL_LOOKBACK_MINUTES = 30
+LEAD_POLL_LOOKBACK_MINUTES = 40
 
 
 def poll_leads() -> int:
@@ -20,10 +20,12 @@ def poll_leads() -> int:
         print("Lead poll: no companies found, skipping")
         return 0
 
-    since = int(time.time()) - (LEAD_POLL_LOOKBACK_MINUTES * 60)
+    now = int(time.time())
+    since = now - (LEAD_POLL_LOOKBACK_MINUTES * 60)
+    until = now - (10 * 60)  # exclude last 10 min to avoid race with webhook
     total_saved = 0
 
-    print(f"Lead poll: checking {len(companies)} company/page(s), lookback={LEAD_POLL_LOOKBACK_MINUTES}min (since {since})")
+    print(f"Lead poll: checking {len(companies)} company/page(s), lookback={LEAD_POLL_LOOKBACK_MINUTES}min (since {since}, until {until})")
 
     for company in companies:
         company_id = company.get("id")
@@ -50,7 +52,7 @@ def poll_leads() -> int:
                 if not form_id:
                     continue
 
-                leads = get_form_leads(form_id, page_id, since)
+                leads = get_form_leads(form_id, page_id, since, until)
                 for lead in leads:
                     leadgen_id = lead.get("id")
                     if not leadgen_id:

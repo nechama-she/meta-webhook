@@ -283,12 +283,14 @@ def _fetch_form_leads(form_id: str, filtering: str, token: str) -> list[dict]:
     return leads
 
 
-def get_form_leads(form_id: str, page_id: str, since_timestamp: int) -> list[dict]:
-    """Pull leads created after *since_timestamp* from a single form."""
+def get_form_leads(form_id: str, page_id: str, since_timestamp: int, until_timestamp: int) -> list[dict]:
+    """Pull leads created after *since_timestamp* and before *until_timestamp* from a single form."""
     token = get_page_token(page_id)
-    filtering = json.dumps(
-        [{"field": "time_created", "operator": "GREATER_THAN", "value": since_timestamp}]
-    )
+    filters = [
+        {"field": "time_created", "operator": "GREATER_THAN", "value": since_timestamp},
+        {"field": "time_created", "operator": "LESS_THAN", "value": until_timestamp},
+    ]
+    filtering = json.dumps(filters)
     try:
         leads = _fetch_form_leads(form_id, filtering, token)
     except urllib.error.HTTPError as exc:
