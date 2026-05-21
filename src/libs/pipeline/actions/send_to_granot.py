@@ -64,7 +64,7 @@ def send_to_granot(data: dict) -> dict:
         "dzip": dzip,
         "leadno": lead_id,
         "movedte": move_date,
-        "label": "Borat",
+        "label": "Facebook",
         "notes": f"Original Pickup: {ozip}, Original Delivery: {dzip}",
     }
 

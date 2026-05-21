@@ -483,6 +483,7 @@ class TestSendToGranot:
             "pickup_zip": "33028",
             "delivery_zip": "10001",
             "move_date": (date.today() + timedelta(days=30)).isoformat(),
+            "company_name": "Facebook",
         }
         lead.update(overrides)
         return lead
@@ -501,7 +502,7 @@ class TestSendToGranot:
         assert payload["dzip"] == "10001"
         assert payload["leadno"] == "L100"
         assert payload["movedte"] == (date.today() + timedelta(days=30)).isoformat()
-        assert payload["label"] == "Borat"
+        assert payload["label"] == "Facebook"
         assert payload["notes"] == "Original Pickup: 33028, Original Delivery: 10001"
         assert result["granot_ok"] is True
 
