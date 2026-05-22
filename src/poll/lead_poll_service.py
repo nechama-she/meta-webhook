@@ -80,6 +80,7 @@ def poll_leads() -> int:
                         continue
                     save_lead_if_new(item)
                     print(f"NEW_LEAD_FOUND | leadgen_id={leadgen_id} | company={company_name} | page_id={page_id} | form_id={form_id}")
+                    print(f"Lead fields={list(item.keys())} data={item}")
                     run_pipeline("new_lead", item)
                     update_lead(item)
                     total_saved += 1
