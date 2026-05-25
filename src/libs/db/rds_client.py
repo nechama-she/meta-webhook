@@ -114,20 +114,61 @@ def get_lead_id_by_phone(phone: str) -> str | None:
         return None
 
 
-def get_smartmoving_id_by_phone(phone: str) -> str | None:
+def is_company_number(aircall_number_id: int) -> bool:
+    """Return True if the given Aircall number_id belongs to a company line (not a rep)."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM companies WHERE aircall_number_id = %s LIMIT 1",
+                (aircall_number_id,),
+            )
+            return cur.fetchone() is not None
+    except Exception as exc:
+        print(f"RDS is_company_number error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False
+
+
+def get_smartmoving_id_by_phone(phone: str, company_name: str | None = None) -> str | None:
     """Look up the smartmoving_id for a given phone number.
 
+    If company_name is provided, filters by company name to avoid
+    returning the wrong lead when the same phone exists across companies.
+    Falls back to phone-only lookup if no company match is found.
     Returns the smartmoving_id string or None if not found.
     """
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
-                (phone,),
-            )
-            row = cur.fetchone()
-            return row[0] if row else None
+            if company_name:
+                cur.execute(
+                    """
+                    SELECT l.smartmoving_id FROM leads l
+                    LEFT JOIN companies c ON l.company_id = c.id
+                    WHERE l.phone = %s AND c.name = %s
+                    LIMIT 1
+                    """,
+                    (phone, company_name),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+                print(f"RDS phone lookup: no match for phone={phone} company={company_name!r}, falling back to phone-only")
+                cur.execute(
+                    "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
+                    (phone,),
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+            else:
+                cur.execute(
+                    "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
+                    (phone,),
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
     except Exception as exc:
         print(f"RDS phone lookup error: {repr(exc)}")
         global _conn
