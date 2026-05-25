@@ -11,6 +11,37 @@ from pipeline.actions.smartmoving import send_to_smartmoving, send_to_smartmovin
 # Gorilla Haulers - the only company that can send to main SmartMoving branch
 _GORILLA_PAGE_ID = "101598038182773"
 
+# Default field remapping applied to all companies.
+# Standard field names: full_name, phone_number, email, ozip, dzip, move_date, move_size
+_DEFAULT_FIELD_MAP: dict[str, str] = {
+    "phone": "phone_number",
+    "name": "full_name",
+    "pickup_zip": "ozip",
+    "delivery_zip": "dzip",
+    "when_is_the_move?": "move_date",
+    "when_is_the_move": "move_date",
+    "move_size": "move_size",
+}
+
+# Per-page overrides: {page_id: {facebook_field_name: standard_field_name}}
+# TODO: move this to DB
+_PAGE_FIELD_MAP: dict[str, dict[str, str]] = {
+    # "517722408094755": {  # Wilson Bros Van Lines - fill in once logs confirm field names
+    #     "some_fb_field": "full_name",
+    # },
+}
+
+
+def _remap_fields(data: dict) -> dict:
+    """Rename Facebook field names to standard field names (default + per-page overrides)."""
+    page_id = str(data.get("page_id") or "")
+    mapping = {**_DEFAULT_FIELD_MAP, **_PAGE_FIELD_MAP.get(page_id, {})}
+    for fb_field, standard_field in mapping.items():
+        if fb_field in data and standard_field not in data:
+            data[standard_field] = data[fb_field]
+            print(f"Field remap [{page_id}]: {fb_field!r} → {standard_field!r}")
+    return data
+
 
 # Fields that should NOT have underscores replaced
 _SKIP_NORMALIZE = frozenset({
@@ -51,6 +82,7 @@ def _send_to_crm_by_company(data: dict) -> dict:
 
 
 ACTIONS = [
+    _remap_fields,
     _scope_in_service_area,
     format_move_date,
     _normalize_facebook_fields,
