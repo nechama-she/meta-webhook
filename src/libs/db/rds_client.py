@@ -166,10 +166,10 @@ def get_company_by_aircall_number_id(aircall_number_id: int | str) -> dict | Non
         return None
 
 
-def get_smartmoving_id_by_phone(phone: str, company_name: str | None = None) -> str | None:
+def get_smartmoving_id_by_phone(phone: str, company_id: str | None = None) -> str | None:
     """Look up the smartmoving_id for a given phone number.
 
-    If company_name is provided, filters by company name to avoid
+    If company_id is provided, filters by company id to avoid
     returning the wrong lead when the same phone exists across companies.
     Falls back to phone-only lookup if no company match is found.
     Returns the smartmoving_id string or None if not found.
@@ -177,38 +177,41 @@ def get_smartmoving_id_by_phone(phone: str, company_name: str | None = None) -> 
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
-            if company_name:
+            if company_id:
+                sql = cur.mogrify(
+                    "SELECT smartmoving_id "
+                    "FROM leads "
+                    "WHERE phone = %s "
+                    "AND company_id = %s "
+                    "AND smartmoving_id IS NOT NULL "
+                    "LIMIT 1",
+                    (phone, company_id),
+                )
                 print(
-                    "RDS phone lookup query: "
-                    "SELECT l.smartmoving_id FROM leads l LEFT JOIN companies c ON l.company_id = c.id "
-                    "WHERE l.phone = %s AND c.name = %s LIMIT 1 "
-                    f"| params=({phone!r}, {company_name!r})"
+                    sql
                 )
                 cur.execute(
-                    """
-                    SELECT l.smartmoving_id FROM leads l
-                    LEFT JOIN companies c ON l.company_id = c.id
-                    WHERE l.phone = %s AND c.name = %s
-                    LIMIT 1
-                    """,
-                    (phone, company_name),
+                   sql
                 )
                 row = cur.fetchone()
+                print(f"RDS phone lookup response: {row!r}")
                 if row:
                     return row[0]
-                print(f"RDS phone lookup: no match for phone={phone} company={company_name!r}, falling back to phone-only")
+                print(f"RDS phone lookup: no match for phone={phone} company_id={company_id!r}, falling back to phone-only")
                 cur.execute(
-                    "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
+                    "SELECT smartmoving_id FROM leads WHERE phone = %s AND smartmoving_id IS NOT NULL LIMIT 1",
                     (phone,),
                 )
                 row = cur.fetchone()
+                print(f"RDS phone lookup fallback response: {row!r}")
                 return row[0] if row else None
             else:
                 cur.execute(
-                    "SELECT smartmoving_id FROM leads WHERE phone = %s LIMIT 1",
+                    "SELECT smartmoving_id FROM leads WHERE phone = %s AND smartmoving_id IS NOT NULL LIMIT 1",
                     (phone,),
                 )
                 row = cur.fetchone()
+                print(f"RDS phone lookup response: {row!r}")
                 return row[0] if row else None
     except Exception as exc:
         print(f"RDS phone lookup error: {repr(exc)}")
