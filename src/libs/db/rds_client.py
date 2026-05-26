@@ -178,6 +178,12 @@ def get_smartmoving_id_by_phone(phone: str, company_name: str | None = None) -> 
         conn = _get_connection()
         with conn.cursor() as cur:
             if company_name:
+                print(
+                    "RDS phone lookup query: "
+                    "SELECT l.smartmoving_id FROM leads l LEFT JOIN companies c ON l.company_id = c.id "
+                    "WHERE l.phone = %s AND c.name = %s LIMIT 1 "
+                    f"| params=({phone!r}, {company_name!r})"
+                )
                 cur.execute(
                     """
                     SELECT l.smartmoving_id FROM leads l
