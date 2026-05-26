@@ -28,13 +28,13 @@ def _normalize_phone(raw: str) -> str:
     return re.sub(r"[^\d+]", "", raw)
 
 
-def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_name: str = "") -> None:
+def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_id: str = "") -> None:
     """Look up lead by phone in RDS and post SMS as a SmartMoving note."""
     # Strip +1 to match how phones are stored in leads table
     lookup_phone = re.sub(r"[^\d]", "", phone)
     if lookup_phone.startswith("1") and len(lookup_phone) == 11:
         lookup_phone = lookup_phone[1:]
-    smartmoving_id = get_smartmoving_id_by_phone(lookup_phone, company_name or None)
+    smartmoving_id = get_smartmoving_id_by_phone(lookup_phone, company_id or None)
     if not smartmoving_id:
         print(f"SmartMoving SMS note: no lead found for {phone}, saving as pending")
         if direction == "received":
@@ -99,16 +99,18 @@ def handle_aircall_message(body: dict) -> None:
     )
 
     # 1b. Post SMS as a note to SmartMoving
-    # Resolve canonical company name from DB using Aircall number ID.
+    # Resolve canonical company ID from DB using Aircall number ID.
     company = get_company_by_aircall_number_id(number_id) if number_id else None
+    db_company_id = company["id"] if company else None
     db_company_name = company["name"] if company else None
     print(
         "Aircall SMS: company mapping "
         f"number_id={number_id!r} event_name={company_name!r} "
+        f"db_company_id={db_company_id!r} "
         f"db_aircall_name={(company or {}).get('aircall_name')!r} "
         f"db_company_name={db_company_name!r}"
     )
-    _post_sms_note(phone_number, company_number, text, direction, db_company_name)
+    _post_sms_note(phone_number, company_number, text, direction, db_company_id)
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
