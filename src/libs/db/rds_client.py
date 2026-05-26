@@ -121,7 +121,7 @@ def is_company_number(aircall_number_id: int) -> bool:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT 1 FROM companies WHERE aircall_number_id = %s LIMIT 1",
-                (aircall_number_id,),
+                (str(aircall_number_id),),
             )
             return cur.fetchone() is not None
     except Exception as exc:
