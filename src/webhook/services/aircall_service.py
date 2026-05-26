@@ -8,7 +8,11 @@ from ai import chat_reply
 from aircall import send_sms, trigger_outbound_call
 from crm.smartmoving_notes import add_note
 from db import try_claim_dedupe_key, save_sms_message, save_pending_note
-from db.rds_client import get_smartmoving_id_by_phone, get_lead_id_by_phone, is_company_number
+from db.rds_client import (
+    get_company_by_aircall_number_id,
+    get_lead_id_by_phone,
+    get_smartmoving_id_by_phone,
+)
 
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
@@ -95,9 +99,16 @@ def handle_aircall_message(body: dict) -> None:
     )
 
     # 1b. Post SMS as a note to SmartMoving
-    # Only filter by company name if the number is a company line
-    lookup_company = company_name if (number_id and is_company_number(number_id)) else None
-    _post_sms_note(phone_number, company_number, text, direction, lookup_company)
+    # Resolve canonical company name from DB using Aircall number ID.
+    company = get_company_by_aircall_number_id(number_id) if number_id else None
+    db_company_name = company["name"] if company else None
+    print(
+        "Aircall SMS: company mapping "
+        f"number_id={number_id!r} event_name={company_name!r} "
+        f"db_aircall_name={(company or {}).get('aircall_name')!r} "
+        f"db_company_name={db_company_name!r}"
+    )
+    _post_sms_note(phone_number, company_number, text, direction, db_company_name)
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:

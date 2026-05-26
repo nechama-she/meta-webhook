@@ -131,6 +131,41 @@ def is_company_number(aircall_number_id: int) -> bool:
         return False
 
 
+def get_company_by_aircall_number_id(aircall_number_id: int | str) -> dict | None:
+    """Return company details for an Aircall number ID.
+
+    Uses companies.aircall_number_id as the source of truth so webhook
+    processing can map Aircall events to the canonical company name.
+    """
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, aircall_name, aircall_number_id, phone
+                FROM companies
+                WHERE aircall_number_id = %s
+                LIMIT 1
+                """,
+                (str(aircall_number_id),),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0],
+                "name": row[1],
+                "aircall_name": row[2],
+                "aircall_number_id": row[3],
+                "phone": row[4],
+            }
+    except Exception as exc:
+        print(f"RDS company by aircall_number_id error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
 def get_smartmoving_id_by_phone(phone: str, company_name: str | None = None) -> str | None:
     """Look up the smartmoving_id for a given phone number.
 
