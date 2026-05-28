@@ -66,7 +66,7 @@ def handle_opportunity_changed(body: dict) -> None:
 
     aircall_number_id = get_sales_rep(rep_name)
     if not aircall_number_id:
-        print(f"Sales rep {rep_name!r} not found in sales_reps table")
+        print(f"Sales rep {rep_name!r} not found in users table")
         return
 
     lead = get_lead_by_smartmoving_id(opportunity_id)

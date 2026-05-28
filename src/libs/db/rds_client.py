@@ -336,7 +336,7 @@ def get_sales_rep(name: str) -> str | None:
         conn = _get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT aircall_number_id FROM sales_reps WHERE name = %s LIMIT 1",
+                "SELECT aircall_number_id FROM users WHERE name = %s LIMIT 1",
                 (name,),
             )
             row = cur.fetchone()
