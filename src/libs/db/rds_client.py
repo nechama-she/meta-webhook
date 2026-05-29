@@ -433,14 +433,14 @@ def set_lead_assigned_to(smartmoving_id: str, user_id: str) -> bool:
 def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
     """Look up lead info by smartmoving_id, joining companies for company name.
 
-    Returns dict with full_name, phone, company_name or None if not found.
+    Returns dict with full_name, phone, company_name, company_id, company_phone or None if not found.
     """
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT l.full_name, l.phone, c.name
+                SELECT l.full_name, l.phone, c.name, c.id, c.phone
                 FROM leads l
                 LEFT JOIN companies c ON l.company_id = c.id
                 WHERE l.smartmoving_id = %s
@@ -455,9 +455,21 @@ def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
                 "full_name": row[0],
                 "phone": row[1],
                 "company_name": row[2],
+                "company_id": row[3],
+                "company_phone": row[4],
             }
     except Exception as exc:
         print(f"RDS lead by smartmoving_id error: {repr(exc)}")
         global _conn
         _conn = None
         return None
+
+
+def get_company_template(company_id: str, column: str) -> str | None:
+    """Look up a message template column for a company from company_message_templates."""
+    row = _exec_fetchone(
+        f"SELECT {column} FROM company_message_templates WHERE company_id = %s LIMIT 1",
+        (str(company_id),),
+        f"{column} lookup",
+    )
+    return row[0] if row else None
