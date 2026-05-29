@@ -348,6 +348,45 @@ def get_sales_rep(name: str) -> str | None:
         return None
 
 
+def get_user_id_by_name(name: str) -> str | None:
+    """Look up user id from users table by name."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM users WHERE name = %s LIMIT 1",
+                (name,),
+            )
+            row = cur.fetchone()
+            print(f"RDS user_id lookup response for {name!r}: {row!r}")
+            return str(row[0]) if row else None
+    except Exception as exc:
+        print(f"RDS user_id lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
+def set_lead_assigned_to(smartmoving_id: str, user_id: str) -> bool:
+    """Update leads.assigned_to for the given smartmoving_id."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            sql = cur.mogrify(
+                "UPDATE leads SET assigned_to = %s WHERE smartmoving_id = %s",
+                (user_id, smartmoving_id),
+            )
+            print(sql)
+            cur.execute(sql)
+            print(f"RDS set assigned_to rowcount: {cur.rowcount}")
+            return cur.rowcount > 0
+    except Exception as exc:
+        print(f"RDS set assigned_to error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return False
+
+
 def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
     """Look up lead info by smartmoving_id, joining companies for company name.
 
