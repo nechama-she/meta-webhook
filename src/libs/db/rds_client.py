@@ -430,6 +430,26 @@ def set_lead_assigned_to(smartmoving_id: str, user_id: str) -> bool:
         return False
 
 
+def get_company_id_by_name(name: str) -> str | None:
+    """Look up company id by name."""
+    row = _exec_fetchone(
+        "SELECT id FROM companies WHERE name = %s LIMIT 1",
+        (name,),
+        "company_id by name lookup",
+    )
+    return str(row[0]) if row else None
+
+
+def set_lead_company_id(smartmoving_id: str, company_id: str) -> bool:
+    """Update leads.company_id for the given smartmoving_id."""
+    row = _exec_fetchone(
+        "UPDATE leads SET company_id = %s WHERE smartmoving_id = %s RETURNING smartmoving_id",
+        (company_id, smartmoving_id),
+        "set company_id",
+    )
+    return row is not None
+
+
 def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
     """Look up lead info by smartmoving_id, joining companies for company name.
 

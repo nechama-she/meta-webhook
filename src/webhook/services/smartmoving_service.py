@@ -7,15 +7,18 @@ from crm.smartmoving_notes import add_note, get_audit_activity, get_followups
 from db import try_claim_dedupe_key
 from db.rds_client import (
     delete_followup,
+    get_company_id_by_name,
     get_company_template,
     get_lead_by_smartmoving_id,
     get_sales_rep,
     get_user_id_by_name,
     save_followup,
     set_lead_assigned_to,
+    set_lead_company_id,
 )
 
 _SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
+_BRANCH_RE = re.compile(r"^Branch changed to (.+?)\.?\s*$")
 
 
 def handle_followup_created(body: dict) -> None:
@@ -65,6 +68,18 @@ def handle_opportunity_changed(body: dict) -> None:
 
     latest = activities[0]
     description = latest.get("description", "")
+
+    branch_match = _BRANCH_RE.match(description)
+    if branch_match:
+        branch_name = branch_match.group(1).strip()
+        print(f"Branch changed to {branch_name!r} for {opportunity_id}")
+        company_id = get_company_id_by_name(branch_name)
+        if not company_id:
+            print(f"Company {branch_name!r} not found in companies table; company_id not updated")
+            return
+        set_lead_company_id(opportunity_id, company_id)
+        return
+
     match = _SALES_PERSON_RE.match(description)
     if not match:
         print(f"Not a sales person change: {description!r}")
