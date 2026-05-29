@@ -7,6 +7,7 @@ from crm.smartmoving_notes import add_note, get_audit_activity, get_followups
 from db import try_claim_dedupe_key
 from db.rds_client import (
     delete_followup,
+    get_company_template,
     get_lead_by_smartmoving_id,
     get_sales_rep,
     get_user_id_by_name,
@@ -93,16 +94,28 @@ def handle_opportunity_changed(body: dict) -> None:
         print(f"Lead has no name for {opportunity_id}")
         return
 
-    message = (
-        f"Hi {full_name},\n"
-        f"This is {rep_name} from {lead['company_name']}. "
-        f"I've been assigned to help you with your upcoming move.\n\n"
-        f"I'll be your point of contact and can assist with the estimate. "
-        f"We can schedule a virtual in-home estimate, complete the estimate "
-        f"over the phone with one of our estimators, or schedule a free "
-        f"in-home estimate.\n\n"
-        f"You can reply here or feel free to give me a call anytime."
-    )
+    template = get_company_template(lead["company_id"], "rep_assignment_sms") if lead.get("company_id") else None
+    first_name = full_name.split()[0] if full_name.strip() else ""
+    if template:
+        message = template.format(
+            first_name=first_name,
+            company_name=lead["company_name"],
+            company_phone=lead.get("company_phone") or "",
+            smartmoving_id=opportunity_id or "",
+            rep_name=rep_name or "",
+        )
+    else:
+        print(f"No rep_assignment_sms template for company_id={lead.get('company_id')!r}; using default")
+        message = (
+            f"Hi {full_name},\n"
+            f"This is {rep_name} from {lead['company_name']}. "
+            f"I've been assigned to help you with your upcoming move.\n\n"
+            f"I'll be your point of contact and can assist with the estimate. "
+            f"We can schedule a virtual in-home estimate, complete the estimate "
+            f"over the phone with one of our estimators, or schedule a free "
+            f"in-home estimate.\n\n"
+            f"You can reply here or feel free to give me a call anytime."
+        )
 
     phone = lead["phone"]
     if not phone.startswith("+"):
