@@ -367,6 +367,49 @@ def get_user_id_by_name(name: str) -> str | None:
         return None
 
 
+def _exec_fetchone(query: str, params: tuple, label: str):
+    """Mogrify, print, execute and fetchone. Returns row or None."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            sql = cur.mogrify(query, params)
+            print(sql)
+            cur.execute(sql)
+            row = cur.fetchone()
+            print(f"RDS {label} response: {row!r}")
+            return row
+    except Exception as exc:
+        print(f"RDS {label} error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
+def get_user_id_by_aircall_number_id(aircall_number_id: int | str) -> str | None:
+    """Look up user id (rep_id) from users table by aircall_number_id."""
+    row = _exec_fetchone(
+        "SELECT id FROM users WHERE aircall_number_id = %s LIMIT 1",
+        (str(aircall_number_id),),
+        "rep_id lookup",
+    )
+    return str(row[0]) if row else None
+
+
+def get_smartmoving_id_by_assign_to(phone: str, rep_id: str) -> str | None:
+    """Look up smartmoving_id by phone and assigned_to (rep_id)."""
+    row = _exec_fetchone(
+        "SELECT smartmoving_id "
+        "FROM leads "
+        "WHERE phone = %s "
+        "AND assigned_to = %s "
+        "AND smartmoving_id IS NOT NULL "
+        "LIMIT 1",
+        (phone, rep_id),
+        "phone+assigned_to lookup",
+    )
+    return row[0] if row else None
+
+
 def set_lead_assigned_to(smartmoving_id: str, user_id: str) -> bool:
     """Update leads.assigned_to for the given smartmoving_id."""
     try:

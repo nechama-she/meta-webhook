@@ -11,7 +11,9 @@ from db import try_claim_dedupe_key, save_sms_message, save_pending_note
 from db.rds_client import (
     get_company_by_aircall_number_id,
     get_lead_id_by_phone,
+    get_smartmoving_id_by_assign_to,
     get_smartmoving_id_by_phone,
+    get_user_id_by_aircall_number_id,
 )
 
 ENABLE_OPENAI_ANSWER = (
@@ -28,13 +30,21 @@ def _normalize_phone(raw: str) -> str:
     return re.sub(r"[^\d+]", "", raw)
 
 
-def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_id: str = "") -> None:
+def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_id: str = "", number_id: int | None = None) -> None:
     """Look up lead by phone in RDS and post SMS as a SmartMoving note."""
     # Strip +1 to match how phones are stored in leads table
     lookup_phone = re.sub(r"[^\d]", "", phone)
     if lookup_phone.startswith("1") and len(lookup_phone) == 11:
         lookup_phone = lookup_phone[1:]
-    smartmoving_id = get_smartmoving_id_by_phone(lookup_phone, company_id or None)
+    if company_id:
+        smartmoving_id = get_smartmoving_id_by_phone(lookup_phone, company_id)
+    else:
+        rep_id = get_user_id_by_aircall_number_id(number_id) if number_id else None
+        if rep_id:
+            smartmoving_id = get_smartmoving_id_by_assign_to(lookup_phone, rep_id)
+        else:
+            print(f"SmartMoving SMS note: no company and no rep for number_id={number_id!r}, falling back to phone-only lookup")
+            smartmoving_id = get_smartmoving_id_by_phone(lookup_phone)
     if not smartmoving_id:
         print(f"SmartMoving SMS note: no lead found for {phone}, saving as pending")
         if direction == "received":
@@ -110,7 +120,7 @@ def handle_aircall_message(body: dict) -> None:
         f"db_aircall_name={(company or {}).get('aircall_name')!r} "
         f"db_company_name={db_company_name!r}"
     )
-    _post_sms_note(phone_number, company_number, text, direction, db_company_id)
+    _post_sms_note(phone_number, company_number, text, direction, db_company_id, number_id)
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
