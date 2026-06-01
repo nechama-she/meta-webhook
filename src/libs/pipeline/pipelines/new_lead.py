@@ -26,9 +26,13 @@ _DEFAULT_FIELD_MAP: dict[str, str] = {
 # Per-page overrides: {page_id: {facebook_field_name: standard_field_name}}
 # TODO: move this to DB
 _PAGE_FIELD_MAP: dict[str, dict[str, str]] = {
-    # "517722408094755": {  # Wilson Bros Van Lines - fill in once logs confirm field names
-    #     "some_fb_field": "full_name",
-    # },
+    "517722408094755": {  # Wilson Bros Van Lines
+        "FULL_NAME": "full_name",
+        "EMAIL": "email",
+        "PHONE": "phone_number",
+        "Pickup Zip": "ozip",
+        "Delivery Zip": "dzip",
+    },
 }
 
 
