@@ -15,10 +15,13 @@ from db.rds_client import (
     save_followup,
     set_lead_assigned_to,
     set_lead_company_id,
+    set_lead_status,
 )
 
 _SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
 _BRANCH_RE = re.compile(r"^Branch changed to (.+?)\.?\s*$")
+_CHANGED_FROM_BOOKED_RE = re.compile(r"\bchanged\b.*\bfrom\s+Booked\b", re.IGNORECASE)
+_CHANGED_TO_BOOKED_RE = re.compile(r"\bchanged\s+to\s+Booked\b", re.IGNORECASE)
 
 
 def handle_followup_created(body: dict) -> None:
@@ -68,6 +71,15 @@ def handle_opportunity_changed(body: dict) -> None:
 
     latest = activities[0]
     description = latest.get("description", "")
+
+    if _CHANGED_TO_BOOKED_RE.search(description):
+        updated = set_lead_status(opportunity_id, "booked")
+        print(f"Opportunity booked for {opportunity_id}: updated={updated}, description={description!r}")
+        return
+    if _CHANGED_FROM_BOOKED_RE.search(description):
+        updated = set_lead_status(opportunity_id, "quoted")
+        print(f"Opportunity unbooked for {opportunity_id}: updated={updated}, description={description!r}")
+        return
 
     branch_match = _BRANCH_RE.match(description)
     if branch_match:
