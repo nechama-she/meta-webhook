@@ -391,7 +391,7 @@ class TestLeadPipeline:
                 "pickup_zip": "33028", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # FL → in_service_area=False
         run_pipeline("new_lead", lead)
         mock_create.assert_called_once()  # out-of-area leads also go to SmartMoving
-        mock_hm.assert_called_once()
+        mock_hm.assert_not_called()
 
     @patch("pipeline.actions.smartmoving.create_lead", side_effect=Exception("API down"))
     def test_run_pipeline_handles_error(self, mock_create):
@@ -413,7 +413,7 @@ class TestLeadPipeline:
         lead = {"leadgen_id": "L1", "full_name": "Test", "phone_number": "5551234567",
                 "pickup_zip": "27510", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # NC → not in service
         result = run_pipeline("new_lead", lead)
-        assert result["in_service_area"] is False
+        assert result["in_service_area"] is True
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -562,10 +562,10 @@ class TestSendToGranot:
         lead = {"leadgen_id": "L1", "full_name": "Test User", "phone_number": "5551234567",
                 "pickup_zip": "33028", "delivery_zip": "10001", "smartmoving_branch_id": "branch-1", "company_name": "Gorilla", "page_id": "101598038182773"}  # FL → not in service
         result = run_pipeline("new_lead", lead)
-        mock_hm.assert_called_once()
+        mock_hm.assert_not_called()
         mock_sm.assert_called_once()  # out-of-area leads also go to SmartMoving
-        assert result["granot_ok"] is True
-        mock_sheet.assert_called_once()
+        assert "granot_ok" not in result
+        mock_sheet.assert_not_called()
 
 
 # ═══════════════════════════════════════════════════════════════════════

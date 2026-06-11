@@ -66,13 +66,9 @@ def _normalize_facebook_fields(data: dict) -> dict:
 
 def _scope_in_service_area(data: dict) -> dict:
     """Apply in_service_area check only to Gorilla Haulers (primary company)."""
-    page_id = data.get("page_id", "")
-    if page_id == _GORILLA_PAGE_ID:
-        check_pickup_zip(data)
-    else:
-        # Non-Gorilla companies always use their own company branch
-        data["in_service_area"] = True
+    data["in_service_area"] = True
     return data
+    
 
 
 def _send_to_crm_by_company(data: dict) -> dict:

@@ -450,6 +450,16 @@ def set_lead_company_id(smartmoving_id: str, company_id: str) -> bool:
     return row is not None
 
 
+def set_lead_status(smartmoving_id: str, status: str) -> bool:
+    """Update leads.status for the given smartmoving_id."""
+    row = _exec_fetchone(
+        "UPDATE leads SET status = %s WHERE smartmoving_id = %s RETURNING smartmoving_id",
+        (status, smartmoving_id),
+        "set status",
+    )
+    return row is not None
+
+
 def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
     """Look up lead info by smartmoving_id, joining companies for company name.
 
