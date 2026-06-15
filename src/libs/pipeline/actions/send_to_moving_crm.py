@@ -10,6 +10,27 @@ from pipeline.actions.smartmoving import _clean_phone
 
 _CRM_URL = "https://m6efygcjve.execute-api.us-east-1.amazonaws.com/api/leads"
 _CRM_API_SECRET = os.environ.get("MOVING_CRM_API_SECRET", "")
+ALLOWED_LEAD_STATUSES = {
+    "new",
+    "contacted",
+    "quoted",
+    "booked",
+    "scheduled",
+    "completed",
+    "lost",
+    "cancelled",
+}
+
+
+def _normalize_status(value: str) -> str:
+    """Return a valid lead status or empty string if invalid/missing."""
+    status = (value or "").strip().lower()
+    if not status:
+        return ""
+    if status in ALLOWED_LEAD_STATUSES:
+        return status
+    print(f"Moving CRM: ignoring invalid status {value!r}")
+    return ""
 
 
 def send_to_moving_crm(data: dict) -> dict:
@@ -40,6 +61,7 @@ def send_to_moving_crm(data: dict) -> dict:
     move_date = data.get("move_date", "")
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
     company_name = data.get("company_name", "")
+    status = _normalize_status(data.get("status", ""))
 
     note = (
         f"email: {data.get('email', '')}. "
@@ -60,6 +82,7 @@ def send_to_moving_crm(data: dict) -> dict:
         "move_date": move_date,
         "move_size": move_size,
         "move_type": data.get("move_type", data.get("moveType", "")),
+        "status": status,
         "leadgen_id": data.get("leadgen_id", ""),
         "smartmoving_id": smartmoving_id,
         "referral_source": referral_source,
