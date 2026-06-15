@@ -1,9 +1,10 @@
 """Handle SmartMoving webhook events."""
 
 import re
+from datetime import datetime, timezone
 
 from aircall import send_sms
-from crm.smartmoving_notes import add_note, get_audit_activity, get_followups
+from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity
 from db import try_claim_dedupe_key
 from db.rds_client import (
     delete_followup,
@@ -17,11 +18,59 @@ from db.rds_client import (
     set_lead_company_id,
     set_lead_status,
 )
+from pipeline.actions.send_to_moving_crm import send_to_moving_crm
 
 _SALES_PERSON_RE = re.compile(r"^Sales person changed to (.+?)\.?\s*$")
 _BRANCH_RE = re.compile(r"^Branch changed to (.+?)\.?\s*$")
 _CHANGED_FROM_BOOKED_RE = re.compile(r"\bchanged\b.*\bfrom\s+Booked\b", re.IGNORECASE)
 _CHANGED_TO_BOOKED_RE = re.compile(r"\bchanged\s+to\s+Booked\b", re.IGNORECASE)
+
+
+def _clean_phone(phone: str) -> str:
+    """Strip +1 country code and non-digit characters, returning 10-digit number."""
+    phone = "".join(c for c in phone if c.isdigit())
+    if len(phone) == 11 and phone.startswith("1"):
+        phone = phone[1:]
+    return phone
+
+
+_OPPORTUNITY_TYPE_MAP = {0: "Local", 1: "Intrastate", 2: "Interstate"}
+
+
+def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
+    """Fetch opportunity from SmartMoving and create the lead via Moving CRM API."""
+    opp = get_opportunity(opportunity_id)
+    if not opp:
+        print(f"Could not fetch opportunity {opportunity_id}; lead not created")
+        return
+    customer = opp.get("customer") or {}
+    full_name = customer.get("name", "")
+    phone = _clean_phone(customer.get("phoneNumber", ""))
+    email = customer.get("emailAddress", "")
+    company_name = (opp.get("branch") or {}).get("name", "")
+    referral_source = opp.get("referralSource", "")
+    move_size = (opp.get("moveSize") or {}).get("name", "")
+    move_type = _OPPORTUNITY_TYPE_MAP.get(opp.get("opportunityType"), "")
+
+    service_date = opp.get("serviceDate")
+    try:
+        move_date = datetime.utcfromtimestamp(service_date).strftime("%Y-%m-%d") if service_date else ""
+    except Exception:
+        move_date = ""
+
+    send_to_moving_crm({
+        "full_name": full_name,
+        "phone_number": phone,
+        "email": email,
+        "smartmoving_lead_id": opportunity_id,
+        "company_name": company_name,
+        "referral_source": referral_source,
+        "move_size": move_size,
+        "move_type": move_type,
+        "move_date": move_date,
+        "status": status,
+        "source": "SmartMoving",
+    })
 
 
 def handle_followup_created(body: dict) -> None:
@@ -74,10 +123,16 @@ def handle_opportunity_changed(body: dict) -> None:
 
     if _CHANGED_TO_BOOKED_RE.search(description):
         updated = set_lead_status(opportunity_id, "booked")
+        if not updated:
+            print(f"Lead not found for {opportunity_id}, inserting from SmartMoving")
+            _ensure_lead_exists(opportunity_id, "booked")
         print(f"Opportunity booked for {opportunity_id}: updated={updated}, description={description!r}")
         return
     if _CHANGED_FROM_BOOKED_RE.search(description):
         updated = set_lead_status(opportunity_id, "quoted")
+        if not updated:
+            print(f"Lead not found for {opportunity_id}, inserting from SmartMoving")
+            _ensure_lead_exists(opportunity_id, "quoted")
         print(f"Opportunity unbooked for {opportunity_id}: updated={updated}, description={description!r}")
         return
 

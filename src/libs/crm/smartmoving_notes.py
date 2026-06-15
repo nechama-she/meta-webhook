@@ -67,6 +67,32 @@ def get_followups(opportunity_id: str) -> list | None:
     return None
 
 
+def get_opportunity(opportunity_id: str) -> dict | None:
+    """GET full opportunity details from SmartMoving.
+
+    Returns the parsed JSON dict or None on error.
+    """
+    url = f"{_OPP_URL}/{opportunity_id}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Cache-Control": "no-cache",
+            "x-api-key": _API_KEY,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            print(f"SmartMoving opportunity {opportunity_id}: {resp.status}")
+            return data
+    except urllib.error.HTTPError as exc:
+        print(f"SmartMoving opportunity HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+    except Exception as exc:
+        print(f"SmartMoving opportunity error: {repr(exc)}")
+    return None
+
+
 def get_audit_activity(opportunity_id: str) -> list | None:
     """GET audit activity for a SmartMoving opportunity.
 
