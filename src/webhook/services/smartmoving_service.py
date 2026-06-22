@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from aircall import send_sms
+from crm.moving_crm import get_companies
 from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity
 from db import try_claim_dedupe_key
 from db.rds_client import (
@@ -47,7 +48,19 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
     full_name = customer.get("name", "")
     phone = _clean_phone(customer.get("phoneNumber", ""))
     email = customer.get("emailAddress", "")
-    company_name = (opp.get("branch") or {}).get("name", "")
+    branch = opp.get("branch") or {}
+    branch_id = str(branch.get("id") or "").strip()
+    sm_branch_name = branch.get("name", "")
+    company_name = sm_branch_name
+    companies = get_companies()
+    for c in companies:
+        cid = str(c.get("smartmoving_branch_id") or c.get("samrtmoving_branch_id") or "").strip()
+        if cid and cid == branch_id:
+            company_name = c.get("name", sm_branch_name)
+            print(f"_ensure_lead_exists: resolved branch {branch_id!r} -> company_name={company_name!r}")
+            break
+    else:
+        print(f"_ensure_lead_exists: no Moving CRM company matched branch_id={branch_id!r}; using branch name {sm_branch_name!r}")
     referral_source = opp.get("referralSource", "")
     move_size = (opp.get("moveSize") or {}).get("name", "")
     move_type = _OPPORTUNITY_TYPE_MAP.get(opp.get("opportunityType"), "")
