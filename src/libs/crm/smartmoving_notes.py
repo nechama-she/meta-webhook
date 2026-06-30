@@ -8,6 +8,15 @@ import urllib.error
 _BASE_URL = "https://api-public.smartmoving.com/v1/api/premium/opportunities"
 _OPP_URL = "https://api-public.smartmoving.com/v1/api/opportunities"
 _API_KEY = os.environ.get("SMARTMOVING_API_KEY", "")
+_OPP_INCLUDE_QUERY = (
+    "IncludeTripInfo=true"
+    "&IncludePayments=true"
+    "&IncludeJobAddresses=true"
+    "&IncludeFiles=true"
+    "&IncludePhotos=true"
+    "&IncludeDocuments=true"
+    "&IncludeCharges=true"
+)
 
 
 def add_note(opportunity_id: str, note: str) -> str | None:
@@ -67,12 +76,14 @@ def get_followups(opportunity_id: str) -> list | None:
     return None
 
 
-def get_opportunity(opportunity_id: str) -> dict | None:
+def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | None:
     """GET full opportunity details from SmartMoving.
 
     Returns the parsed JSON dict or None on error.
     """
     url = f"{_OPP_URL}/{opportunity_id}"
+    if include_full:
+        url = f"{url}?{_OPP_INCLUDE_QUERY}"
     req = urllib.request.Request(
         url,
         headers={
