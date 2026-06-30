@@ -253,10 +253,10 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     print(f"Sales person changed to {rep_name!r} for {opportunity_id}")
 
     user_id = get_user_id_by_name(rep_name)
-    if user_id:
-        set_lead_assigned_to(opportunity_id, user_id)
-    else:
-        print(f"User {rep_name!r} not found in users table; assigned_to not updated")
+    if not user_id:
+        print(f"User {rep_name!r} not found in users table; skipping rep-assignment SMS")
+        return
+    set_lead_assigned_to(opportunity_id, user_id)
 
     aircall_number_id = get_sales_rep(rep_name)
     if not aircall_number_id:

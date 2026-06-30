@@ -1267,13 +1267,15 @@ class TestOpportunityChanged:
         }
 
     @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
     @patch("services.smartmoving_service.get_sales_rep")
     @patch("services.smartmoving_service.get_audit_activity")
-    def test_sends_sms_on_sales_person_change(self, mock_audit, mock_rep, mock_lead, mock_sms):
+    def test_sends_sms_on_sales_person_change(self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms):
         mock_audit.return_value = [
             {"description": "Sales person changed to Eli Jones.", "activityType": 1}
         ]
+        mock_user.return_value = "user-123"
         mock_rep.return_value = "645873"
         mock_lead.return_value = {
             "full_name": "John Smith",
@@ -1292,13 +1294,15 @@ class TestOpportunityChanged:
         assert "Gorilla Haulers" in args[0][2]
 
     @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
     @patch("services.smartmoving_service.get_sales_rep")
     @patch("services.smartmoving_service.get_audit_activity")
-    def test_sends_sms_with_trailing_space_dot(self, mock_audit, mock_rep, mock_lead, mock_sms):
+    def test_sends_sms_with_trailing_space_dot(self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms):
         mock_audit.return_value = [
             {"description": "Sales person changed to Sean Edson .", "activityType": 1}
         ]
+        mock_user.return_value = "user-123"
         mock_rep.return_value = "645873"
         mock_lead.return_value = {
             "full_name": "Jane Doe",
@@ -1336,13 +1340,15 @@ class TestOpportunityChanged:
         mock_sms.assert_not_called()
 
     @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
     @patch("services.smartmoving_service.get_sales_rep")
     @patch("services.smartmoving_service.get_audit_activity")
-    def test_no_sms_when_lead_not_found(self, mock_audit, mock_rep, mock_lead, mock_sms):
+    def test_no_sms_when_lead_not_found(self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms):
         mock_audit.return_value = [
             {"description": "Sales person changed to Eli Jones.", "activityType": 1}
         ]
+        mock_user.return_value = "user-123"
         mock_rep.return_value = "645873"
         mock_lead.return_value = None
         from handler import lambda_handler
@@ -1351,13 +1357,15 @@ class TestOpportunityChanged:
         mock_sms.assert_not_called()
 
     @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
     @patch("services.smartmoving_service.get_sales_rep")
     @patch("services.smartmoving_service.get_audit_activity")
-    def test_no_sms_when_lead_missing_phone(self, mock_audit, mock_rep, mock_lead, mock_sms):
+    def test_no_sms_when_lead_missing_phone(self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms):
         mock_audit.return_value = [
             {"description": "Sales person changed to Eli Jones.", "activityType": 1}
         ]
+        mock_user.return_value = "user-123"
         mock_rep.return_value = "645873"
         mock_lead.return_value = {
             "full_name": "John Smith",
@@ -1373,6 +1381,29 @@ class TestOpportunityChanged:
     @patch("services.smartmoving_service.get_audit_activity")
     def test_no_sms_when_no_audit_activity(self, mock_audit, mock_sms):
         mock_audit.return_value = []
+        from handler import lambda_handler
+        resp = lambda_handler(self._event(), None)
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_no_sms_when_user_not_in_table_even_if_rep_number_exists(
+        self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms
+    ):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Unknown Person.", "activityType": 1}
+        ]
+        mock_user.return_value = None
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": "2403586309",
+            "company_name": "Gorilla Haulers",
+        }
         from handler import lambda_handler
         resp = lambda_handler(self._event(), None)
         assert resp["statusCode"] == 200
