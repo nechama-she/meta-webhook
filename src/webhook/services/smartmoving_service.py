@@ -230,13 +230,8 @@ def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
 
     existing_lead = get_lead_by_smartmoving_id(opportunity_id)
     if not existing_lead:
-        default_status = _map_opportunity_status(opportunity.get("status")) or "quoted"
-        print(f"Lead not found for {opportunity_id}, inserting from SmartMoving")
-        _ensure_lead_exists(opportunity_id, default_status)
-        existing_lead = get_lead_by_smartmoving_id(opportunity_id)
-        if not existing_lead:
-            print(f"Lead still missing after insert for {opportunity_id}")
-            return False
+        print(f"Lead not found for {opportunity_id}; skipping CRM sync (no create on update)")
+        return False
 
     crm_lead_id = existing_lead.get("id")
     if not crm_lead_id:
@@ -258,10 +253,10 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     print(f"Sales person changed to {rep_name!r} for {opportunity_id}")
 
     user_id = get_user_id_by_name(rep_name)
-    if user_id:
-        set_lead_assigned_to(opportunity_id, user_id)
-    else:
-        print(f"User {rep_name!r} not found in users table; assigned_to not updated")
+    if not user_id:
+        print(f"User {rep_name!r} not found in users table; skipping rep-assignment SMS")
+        return
+    set_lead_assigned_to(opportunity_id, user_id)
 
     aircall_number_id = get_sales_rep(rep_name)
     if not aircall_number_id:
