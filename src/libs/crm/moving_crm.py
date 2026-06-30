@@ -244,3 +244,49 @@ def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
     except Exception as exc:
         print(f"Moving CRM lead_exists_by_leadgen_id error: {repr(exc)}")
         return False
+
+
+def patch_lead(lead_id: str, payload: dict) -> bool:
+    """Patch a lead by CRM lead id. Returns True on success."""
+    global _admin_token_cache
+
+    if not _BASE_URL or not lead_id:
+        return False
+
+    token = _admin_token_cache or _login()
+    if not token:
+        return False
+
+    url = f"{_BASE_URL.rstrip('/')}/api/leads/{lead_id}"
+    body = json.dumps(payload).encode("utf-8")
+
+    resp = request(
+        url,
+        method="PATCH",
+        body=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        timeout=20,
+    )
+    if resp is not None:
+        return True
+
+    # Refresh token and retry once.
+    _admin_token_cache = None
+    refreshed = _login()
+    if not refreshed:
+        return False
+
+    resp = request(
+        url,
+        method="PATCH",
+        body=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {refreshed}",
+        },
+        timeout=20,
+    )
+    return resp is not None

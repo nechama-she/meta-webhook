@@ -463,30 +463,38 @@ def set_lead_status(smartmoving_id: str, status: str) -> bool:
 def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
     """Look up lead info by smartmoving_id, joining companies for company name.
 
-    Returns dict with full_name, phone, company_name, company_id, company_phone or None if not found.
+    Returns dict with id, full_name, phone, company_name, company_id, company_phone or None if not found.
     """
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT l.full_name, l.phone, c.name, c.id, c.phone
+                SELECT l.id, l.full_name, l.phone, c.name, c.id, c.phone
                 FROM leads l
                 LEFT JOIN companies c ON l.company_id = c.id
                 WHERE l.smartmoving_id = %s
-                LIMIT 1
+                LIMIT 2
                 """,
                 (smartmoving_id,),
             )
-            row = cur.fetchone()
-            if not row:
+            rows = cur.fetchall()
+            if not rows:
                 return None
+            if len(rows) > 1:
+                print(
+                    "RDS lead by smartmoving_id error: "
+                    f"ambiguous match for smartmoving_id={smartmoving_id!r} (count>1)"
+                )
+                return None
+            row = rows[0]
             return {
-                "full_name": row[0],
-                "phone": row[1],
-                "company_name": row[2],
-                "company_id": row[3],
-                "company_phone": row[4],
+                "id": str(row[0]),
+                "full_name": row[1],
+                "phone": row[2],
+                "company_name": row[3],
+                "company_id": row[4],
+                "company_phone": row[5],
             }
     except Exception as exc:
         print(f"RDS lead by smartmoving_id error: {repr(exc)}")
