@@ -197,7 +197,7 @@ def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: di
     assigned_name = sales_assignee.get("name")
     _add_if_value(payload, "assigned_to_name", assigned_name)
     if assigned_name:
-        user_id = get_user_id_by_name(assigned_name)
+        user_id = get_user_id_by_name(assigned_name, role="sales_rep")
         if user_id:
             payload["assigned_to"] = user_id
 
@@ -252,7 +252,7 @@ def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
 def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     print(f"Sales person changed to {rep_name!r} for {opportunity_id}")
 
-    user_id = get_user_id_by_name(rep_name)
+    user_id = get_user_id_by_name(rep_name, role="sales_rep")
     if not user_id:
         print(f"User {rep_name!r} not found in users table; skipping rep-assignment SMS")
         return

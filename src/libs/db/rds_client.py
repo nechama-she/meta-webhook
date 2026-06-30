@@ -336,7 +336,7 @@ def get_sales_rep(name: str) -> str | None:
         conn = _get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT aircall_number_id FROM users WHERE name = %s LIMIT 1",
+                "SELECT aircall_number_id FROM users WHERE name = %s AND role = 'sales_rep' LIMIT 1",
                 (name,),
             )
             row = cur.fetchone()
@@ -348,17 +348,23 @@ def get_sales_rep(name: str) -> str | None:
         return None
 
 
-def get_user_id_by_name(name: str) -> str | None:
-    """Look up user id from users table by name."""
+def get_user_id_by_name(name: str, role: str | None = None) -> str | None:
+    """Look up user id from users table by name, optionally filtering by role."""
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM users WHERE name = %s LIMIT 1",
-                (name,),
-            )
+            if role:
+                cur.execute(
+                    "SELECT id FROM users WHERE name = %s AND role = %s LIMIT 1",
+                    (name, role),
+                )
+            else:
+                cur.execute(
+                    "SELECT id FROM users WHERE name = %s LIMIT 1",
+                    (name,),
+                )
             row = cur.fetchone()
-            print(f"RDS user_id lookup response for {name!r}: {row!r}")
+            print(f"RDS user_id lookup response for {name!r}, role={role!r}: {row!r}")
             return str(row[0]) if row else None
     except Exception as exc:
         print(f"RDS user_id lookup error: {repr(exc)}")
