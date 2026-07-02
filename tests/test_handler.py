@@ -1266,6 +1266,13 @@ class TestOpportunityChanged:
             }),
         }
 
+    def _event_with_status(self, status):
+        event = self._event()
+        payload = json.loads(event["body"])
+        payload["opportunity-status"] = status
+        event["body"] = json.dumps(payload)
+        return event
+
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
@@ -1408,3 +1415,48 @@ class TestOpportunityChanged:
         resp = lambda_handler(self._event(), None)
         assert resp["statusCode"] == 200
         mock_sms.assert_not_called()
+
+    @patch("services.smartmoving_service._ensure_lead_exists")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_creates_missing_lead_when_booked(self, mock_audit, mock_opp, mock_lead, mock_ensure):
+        mock_audit.return_value = [{"description": "Opportunity booked.", "activityType": 1}]
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 4,
+            "customer": {"name": "John Smith", "phoneNumber": "2403586309", "emailAddress": "john@example.com"},
+        }
+        mock_lead.side_effect = [None, {"id": "crm-1", "full_name": "John Smith", "phone": "2403586309", "company_name": "Gorilla Haulers"}]
+        from handler import lambda_handler
+        resp = lambda_handler(self._event_with_status(4), None)
+        assert resp["statusCode"] == 200
+        mock_ensure.assert_called_once_with(self._OPP_ID, "booked")
+
+    @patch("services.smartmoving_service._ensure_lead_exists")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_creates_missing_lead_when_completed(self, mock_audit, mock_opp, mock_lead, mock_ensure):
+        mock_audit.return_value = [{"description": "Opportunity completed.", "activityType": 1}]
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 10,
+            "customer": {"name": "John Smith", "phoneNumber": "2403586309", "emailAddress": "john@example.com"},
+        }
+        mock_lead.side_effect = [None, {"id": "crm-1", "full_name": "John Smith", "phone": "2403586309", "company_name": "Gorilla Haulers"}]
+        from handler import lambda_handler
+        resp = lambda_handler(self._event_with_status(10), None)
+        assert resp["statusCode"] == 200
+        mock_ensure.assert_called_once_with(self._OPP_ID, "completed")
+
+    @patch("services.smartmoving_service._ensure_lead_exists")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_does_not_create_missing_lead_for_other_status(self, mock_audit, mock_lead, mock_ensure):
+        mock_audit.return_value = [{"description": "Opportunity reopened.", "activityType": 1}]
+        mock_lead.return_value = None
+        from handler import lambda_handler
+        resp = lambda_handler(self._event_with_status(0), None)
+        assert resp["statusCode"] == 200
+        mock_ensure.assert_not_called()

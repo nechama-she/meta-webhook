@@ -230,7 +230,17 @@ def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
 
     existing_lead = get_lead_by_smartmoving_id(opportunity_id)
     if not existing_lead:
-        print(f"Lead not found for {opportunity_id}; skipping CRM sync (no create on update)")
+        mapped_status = _map_opportunity_status(opportunity.get("status"))
+        if mapped_status in {"booked", "completed"}:
+            print(f"Lead not found for {opportunity_id}; creating from SmartMoving status={mapped_status}")
+            _ensure_lead_exists(opportunity_id, mapped_status)
+            existing_lead = get_lead_by_smartmoving_id(opportunity_id)
+        else:
+            print(f"Lead not found for {opportunity_id}; skipping CRM sync (status={mapped_status!r})")
+            return False
+
+    if not existing_lead:
+        print(f"Lead still missing for {opportunity_id}; skipping CRM sync")
         return False
 
     crm_lead_id = existing_lead.get("id")
