@@ -52,6 +52,9 @@ def send_to_moving_crm(data: dict) -> dict:
     except (json.JSONDecodeError, AttributeError):
         smartmoving_id = sm_raw.strip('"') if sm_raw else ""
 
+    response_status = ""
+    response_text = ""
+
     phone = _clean_phone(data.get("phone_number", ""))
     campaign = data.get("campaign", "")
     referral_source = data.get("referral_source", "")
@@ -107,14 +110,18 @@ def send_to_moving_crm(data: dict) -> dict:
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            result = resp.read().decode("utf-8")
-            print(f"Moving CRM response: {result}")
+            response_status = str(resp.status)
+            response_text = resp.read().decode("utf-8", "ignore")
             data["moving_crm_ok"] = True
     except urllib.error.HTTPError as exc:
-        print(f"Moving CRM HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+        response_status = str(exc.code)
+        response_text = exc.read().decode("utf-8", "ignore")
         data["moving_crm_ok"] = False
     except Exception as exc:
-        print(f"Moving CRM error: {repr(exc)}")
+        response_status = "exception"
+        response_text = repr(exc)
         data["moving_crm_ok"] = False
+
+    print(f"smartmoving_id={smartmoving_id} | api_secret={_CRM_API_SECRET} | response_status={response_status} | response={response_text}")
 
     return data
