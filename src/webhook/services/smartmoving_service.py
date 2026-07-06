@@ -172,6 +172,7 @@ def _build_jobs_payload(opportunity: dict) -> list[dict]:
             "estimatedCharges": _map_estimated_charges(job.get("estimatedCharges") or []),
             "price": _job_price_from_charges(job),
         }
+        _add_if_value(crm_job, "sortOrder", job.get("sortOrder"))
         _add_if_value(crm_job, "pickup_zip", pickup)
         _add_if_value(crm_job, "delivery_zip", delivery)
         _add_if_value(crm_job, "move_date", move_date)
