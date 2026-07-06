@@ -222,6 +222,7 @@ def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: di
 
     company_name = (branch.get("name") or existing_lead.get("company_name") or "").strip()
     _add_if_value(payload, "company_name", company_name)
+    _add_if_value(payload, "move_size", (opportunity.get("moveSize") or {}).get("name"))
     _add_if_value(payload, "notes", _build_notes_from_opportunity(opportunity))
     _add_if_value(payload, "full_name", customer.get("name") or existing_lead.get("full_name"))
     _add_if_value(payload, "smartmoving_id", opportunity.get("id") or opportunity_id)
