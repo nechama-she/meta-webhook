@@ -1,5 +1,6 @@
 """Handle SmartMoving webhook events."""
 
+import json
 import re
 from datetime import datetime, timezone
 
@@ -249,10 +250,18 @@ def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
         return False
 
     payload = _build_crm_payload(opportunity_id, opportunity, existing_lead)
+    print(
+        "Opportunity patch payload "
+        f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(payload, ensure_ascii=False, default=str)}"
+    )
     ok = patch_lead(crm_lead_id, payload)
     if not ok and "assigned_to_name" in payload:
         retry_payload = dict(payload)
         retry_payload.pop("assigned_to_name", None)
+        print(
+            "Opportunity patch retry payload "
+            f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(retry_payload, ensure_ascii=False, default=str)}"
+        )
         ok = patch_lead(crm_lead_id, retry_payload)
 
     print(f"Opportunity sync to CRM for {opportunity_id}: ok={ok}")
