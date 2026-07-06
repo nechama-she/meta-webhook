@@ -158,6 +158,23 @@ def _map_estimated_total(estimated_total: dict | None) -> dict:
     }
 
 
+def _job_sort_order(job: dict) -> int | None:
+    raw = job.get("sortOrder")
+    if raw is not None:
+        try:
+            return int(raw)
+        except Exception:
+            pass
+
+    job_number = str(job.get("jobNumber") or "").strip()
+    if "-" not in job_number:
+        return None
+    suffix = job_number.rsplit("-", 1)[-1].strip()
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
 def _build_jobs_payload(opportunity: dict) -> list[dict]:
     opportunity_jobs = opportunity.get("jobs") or []
     jobs = []
@@ -172,7 +189,7 @@ def _build_jobs_payload(opportunity: dict) -> list[dict]:
             "estimatedCharges": _map_estimated_charges(job.get("estimatedCharges") or []),
             "price": _job_price_from_charges(job),
         }
-        _add_if_value(crm_job, "sortOrder", job.get("sortOrder"))
+        _add_if_value(crm_job, "sortOrder", _job_sort_order(job))
         _add_if_value(crm_job, "pickup_zip", pickup)
         _add_if_value(crm_job, "delivery_zip", delivery)
         _add_if_value(crm_job, "move_date", move_date)
