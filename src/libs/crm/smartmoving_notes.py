@@ -96,6 +96,10 @@ def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | N
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             print(f"SmartMoving opportunity {opportunity_id}: {resp.status}")
+            print(
+                "SmartMoving opportunity raw response "
+                f"for {opportunity_id}: {json.dumps(data, ensure_ascii=False, default=str)}"
+            )
             return data
     except urllib.error.HTTPError as exc:
         print(f"SmartMoving opportunity HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
