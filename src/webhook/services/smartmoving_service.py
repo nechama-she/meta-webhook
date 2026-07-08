@@ -243,8 +243,9 @@ def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: di
 
 
 def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
-    opportunity, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
+    opportunity = get_opportunity(opportunity_id, include_full=True)
     if not opportunity:
+        _, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
         if status_code != 200 and error_text and "specified opportunity was not found" in error_text.lower():
             print(
                 f"Opportunity {opportunity_id} missing in SmartMoving; deleting lead by smartmoving id in CRM"
