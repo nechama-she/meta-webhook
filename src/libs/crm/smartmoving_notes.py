@@ -81,6 +81,30 @@ def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | N
 
     Returns the parsed JSON dict or None on error.
     """
+    data, status_code, error_text = get_opportunity_result(opportunity_id, include_full=include_full)
+    if data is not None:
+        print(f"SmartMoving opportunity {opportunity_id}: {status_code}")
+        print(
+            "SmartMoving opportunity raw response "
+            f"for {opportunity_id}: {json.dumps(data, ensure_ascii=False, default=str)}"
+        )
+        return data
+
+    if status_code is not None:
+        print(f"SmartMoving opportunity HTTP error: {status_code} {error_text}")
+    else:
+        print(f"SmartMoving opportunity error: {error_text}")
+    return None
+
+
+def get_opportunity_result(opportunity_id: str, include_full: bool = False) -> tuple[dict | None, int | None, str | None]:
+    """GET full opportunity details from SmartMoving with error metadata.
+
+    Returns a tuple of:
+    - parsed JSON dict or None
+    - HTTP status code or None
+    - error text on failure or None
+    """
     url = f"{_OPP_URL}/{opportunity_id}"
     if include_full:
         url = f"{url}?{_OPP_INCLUDE_QUERY}"
@@ -95,17 +119,12 @@ def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | N
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            print(f"SmartMoving opportunity {opportunity_id}: {resp.status}")
-            print(
-                "SmartMoving opportunity raw response "
-                f"for {opportunity_id}: {json.dumps(data, ensure_ascii=False, default=str)}"
-            )
-            return data
+            return data, resp.status, None
     except urllib.error.HTTPError as exc:
-        print(f"SmartMoving opportunity HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+        body = exc.read().decode("utf-8", "ignore")
+        return None, exc.code, body
     except Exception as exc:
-        print(f"SmartMoving opportunity error: {repr(exc)}")
-    return None
+        return None, None, repr(exc)
 
 
 def get_audit_activity(opportunity_id: str) -> list | None:

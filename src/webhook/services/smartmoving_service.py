@@ -5,8 +5,8 @@ import re
 from datetime import datetime, timezone
 
 from aircall import send_sms
-from crm.moving_crm import get_companies, patch_lead
-from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity
+from crm.moving_crm import delete_lead_by_smartmoving, get_companies, patch_lead
+from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity, get_opportunity_result
 from db import try_claim_dedupe_key
 from db.rds_client import (
     delete_followup,
@@ -243,8 +243,15 @@ def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: di
 
 
 def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
-    opportunity = get_opportunity(opportunity_id, include_full=True)
+    opportunity, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
     if not opportunity:
+        if status_code != 200 and error_text and "specified opportunity was not found" in error_text.lower():
+            print(
+                f"Opportunity {opportunity_id} missing in SmartMoving; deleting lead by smartmoving id in CRM"
+            )
+            deleted = delete_lead_by_smartmoving(opportunity_id)
+            print(f"Delete lead by smartmoving_id={opportunity_id}: ok={deleted}")
+            return deleted
         print(f"Could not fetch full opportunity for {opportunity_id}")
         return False
 

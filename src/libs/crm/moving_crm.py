@@ -290,3 +290,39 @@ def patch_lead(lead_id: str, payload: dict) -> bool:
         timeout=20,
     )
     return resp is not None
+
+
+def delete_lead_by_smartmoving(smartmoving_id: str) -> bool:
+    """Delete a lead by SmartMoving id. Returns True on success."""
+    global _admin_token_cache
+
+    if not _BASE_URL or not smartmoving_id:
+        return False
+
+    token = _admin_token_cache or _login()
+    if not token:
+        return False
+
+    url = f"{_BASE_URL.rstrip('/')}/api/leads/by-smartmoving/{smartmoving_id}"
+    resp = request(
+        url,
+        method="DELETE",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    if resp is not None:
+        return True
+
+    # Refresh token and retry once.
+    _admin_token_cache = None
+    refreshed = _login()
+    if not refreshed:
+        return False
+
+    resp = request(
+        url,
+        method="DELETE",
+        headers={"Authorization": f"Bearer {refreshed}"},
+        timeout=20,
+    )
+    return resp is not None
