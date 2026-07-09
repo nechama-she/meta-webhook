@@ -180,6 +180,23 @@ def _today_eastern_date() -> str:
     return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
 
+def _audit_created_at_to_eastern_date(activity: dict | None) -> str | None:
+    if not isinstance(activity, dict):
+        return None
+    created_at = str(activity.get("createdAtUtc") or "").strip()
+    if not created_at:
+        return None
+    if created_at.endswith("Z"):
+        created_at = created_at[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(created_at)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+
+
 def _build_jobs_payload(opportunity: dict, booked_move_date: str | None = None) -> list[dict]:
     opportunity_jobs = opportunity.get("jobs") or []
     jobs = []
@@ -252,7 +269,7 @@ def _build_crm_payload(
     return payload
 
 
-def _sync_opportunity_to_crm(opportunity_id: str, set_booked_move_date_today: bool = False) -> bool:
+def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None = None) -> bool:
     opportunity = get_opportunity(opportunity_id, include_full=True)
     if not opportunity:
         _, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
@@ -286,7 +303,6 @@ def _sync_opportunity_to_crm(opportunity_id: str, set_booked_move_date_today: bo
         print(f"Lead id missing for {opportunity_id}; cannot patch CRM lead")
         return False
 
-    booked_move_date = _today_eastern_date() if set_booked_move_date_today else None
     payload = _build_crm_payload(
         opportunity_id,
         opportunity,
@@ -478,8 +494,9 @@ def handle_opportunity_changed(body: dict) -> None:
     latest = activities[0] if activities else {}
     description = latest.get("description", "") if isinstance(latest, dict) else ""
     status_changed_to_booked = bool(_CHANGED_TO_BOOKED_RE.search(description))
+    booked_move_date = _audit_created_at_to_eastern_date(latest) if status_changed_to_booked else None
 
-    _sync_opportunity_to_crm(opportunity_id, set_booked_move_date_today=status_changed_to_booked)
+    _sync_opportunity_to_crm(opportunity_id, booked_move_date=booked_move_date)
 
     if not activities:
         print(f"No audit activity for {opportunity_id}")
