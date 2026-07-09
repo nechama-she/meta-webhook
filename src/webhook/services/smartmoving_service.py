@@ -3,6 +3,7 @@
 import json
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from aircall import send_sms
 from crm.moving_crm import delete_lead_by_smartmoving, get_companies, patch_lead
@@ -175,7 +176,11 @@ def _job_sort_order(job: dict) -> int | None:
     return int(suffix)
 
 
-def _build_jobs_payload(opportunity: dict) -> list[dict]:
+def _today_eastern_date() -> str:
+    return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+
+
+def _build_jobs_payload(opportunity: dict, booked_move_date: str | None = None) -> list[dict]:
     opportunity_jobs = opportunity.get("jobs") or []
     jobs = []
     for job in opportunity_jobs:
@@ -193,12 +198,17 @@ def _build_jobs_payload(opportunity: dict) -> list[dict]:
         _add_if_value(crm_job, "pickup_zip", pickup)
         _add_if_value(crm_job, "delivery_zip", delivery)
         _add_if_value(crm_job, "move_date", move_date)
-        _add_if_value(crm_job, "booked_move_date", move_date)
+        _add_if_value(crm_job, "booked_move_date", booked_move_date)
         jobs.append(crm_job)
     return jobs
 
 
-def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: dict | None) -> dict:
+def _build_crm_payload(
+    opportunity_id: str,
+    opportunity: dict,
+    existing_lead: dict | None,
+    booked_move_date: str | None = None,
+) -> dict:
     existing_lead = existing_lead or {}
     customer = opportunity.get("customer") or {}
     sales_assignee = opportunity.get("salesAssignee") or {}
@@ -235,14 +245,14 @@ def _build_crm_payload(opportunity_id: str, opportunity: dict, existing_lead: di
     payload["estimatedTotal"] = _map_estimated_total(opportunity.get("estimatedTotal"))
     payload["payments"] = _map_payments(opportunity.get("payments") or [])
 
-    jobs = _build_jobs_payload(opportunity)
+    jobs = _build_jobs_payload(opportunity, booked_move_date=booked_move_date)
     if jobs:
         payload["jobs"] = jobs
 
     return payload
 
 
-def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
+def _sync_opportunity_to_crm(opportunity_id: str, set_booked_move_date_today: bool = False) -> bool:
     opportunity = get_opportunity(opportunity_id, include_full=True)
     if not opportunity:
         _, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
@@ -276,7 +286,13 @@ def _sync_opportunity_to_crm(opportunity_id: str) -> bool:
         print(f"Lead id missing for {opportunity_id}; cannot patch CRM lead")
         return False
 
-    payload = _build_crm_payload(opportunity_id, opportunity, existing_lead)
+    booked_move_date = _today_eastern_date() if set_booked_move_date_today else None
+    payload = _build_crm_payload(
+        opportunity_id,
+        opportunity,
+        existing_lead,
+        booked_move_date=booked_move_date,
+    )
     print(
         "Opportunity patch payload "
         f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(payload, ensure_ascii=False, default=str)}"
@@ -457,16 +473,17 @@ def handle_opportunity_changed(body: dict) -> None:
         print("Missing opportunity-id in opportunity-changed event")
         return
 
-    _sync_opportunity_to_crm(opportunity_id)
-
     activities = get_audit_activity(opportunity_id)
     print(f"Audit activity response for {opportunity_id}: {activities!r}")
+    latest = activities[0] if activities else {}
+    description = latest.get("description", "") if isinstance(latest, dict) else ""
+    status_changed_to_booked = bool(_CHANGED_TO_BOOKED_RE.search(description))
+
+    _sync_opportunity_to_crm(opportunity_id, set_booked_move_date_today=status_changed_to_booked)
+
     if not activities:
         print(f"No audit activity for {opportunity_id}")
         return
-
-    latest = activities[0]
-    description = latest.get("description", "")
 
     match = _SALES_PERSON_RE.match(description)
     if not match:
