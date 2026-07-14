@@ -6,7 +6,12 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from aircall import send_sms
-from crm.moving_crm import delete_lead_by_smartmoving, get_companies, patch_lead
+from crm.moving_crm import (
+    delete_lead_by_smartmoving,
+    get_companies,
+    patch_lead,
+    sync_smartmoving_documents,
+)
 from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity, get_opportunity_result
 from db import try_claim_dedupe_key
 from db.rds_client import (
@@ -322,6 +327,13 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
             f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(retry_payload, ensure_ascii=False, default=str)}"
         )
         ok = patch_lead(crm_lead_id, retry_payload)
+
+    if ok and booked_move_date:
+        docs_ok = sync_smartmoving_documents(opportunity_id)
+        print(
+            "Opportunity document sync "
+            f"for {opportunity_id} after booked update: ok={docs_ok}"
+        )
 
     print(f"Opportunity sync to CRM for {opportunity_id}: ok={ok}")
     return ok
