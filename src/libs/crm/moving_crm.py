@@ -326,3 +326,42 @@ def delete_lead_by_smartmoving(smartmoving_id: str) -> bool:
         timeout=20,
     )
     return resp is not None
+
+
+def sync_smartmoving_documents(smartmoving_id: str) -> bool:
+    """Trigger Moving CRM to sync SmartMoving documents for a lead."""
+    global _admin_token_cache
+
+    if not _BASE_URL or not smartmoving_id:
+        return False
+
+    token = _admin_token_cache or _login()
+    if not token:
+        return False
+
+    url = (
+        f"{_BASE_URL.rstrip('/')}/api/leads/by-smartmoving/"
+        f"{smartmoving_id}/sync-smartmoving-documents"
+    )
+    resp = request(
+        url,
+        method="POST",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    if resp is not None:
+        return True
+
+    # Refresh token and retry once.
+    _admin_token_cache = None
+    refreshed = _login()
+    if not refreshed:
+        return False
+
+    resp = request(
+        url,
+        method="POST",
+        headers={"Authorization": f"Bearer {refreshed}"},
+        timeout=20,
+    )
+    return resp is not None
