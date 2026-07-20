@@ -1,5 +1,8 @@
 """AWS Lambda handler - routing only, no business logic."""
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 
@@ -10,6 +13,20 @@ from services.aircall_service import handle_aircall_message
 from services.smartmoving_service import handle_followup_created, handle_followup_deleted, handle_opportunity_changed
 
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
+APP_SECRET = os.environ.get("APP_SECRET", "")
+
+
+def _verify_meta_signature(event: dict, raw_bytes: bytes) -> bool:
+    """Verify Meta's X-Hub-Signature-256 (HMAC-SHA256 of the raw body with APP_SECRET)."""
+    if not APP_SECRET:
+        print("Signature check: APP_SECRET not configured - rejecting")
+        return False
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+    sig = headers.get("x-hub-signature-256", "")
+    if not sig.startswith("sha256="):
+        return False
+    expected = hmac.new(APP_SECRET.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig.split("=", 1)[1])
 
 
 def lambda_handler(event, context):
@@ -28,8 +45,9 @@ def lambda_handler(event, context):
     # ── POST: webhook events ────────────────────────────────────────────
     if method == "POST":
         try:
-            body = json.loads(event.get("body") or "{}")
-            print("Event:", json.dumps(body))
+            raw = event.get("body") or ""
+            raw_bytes = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode("utf-8")
+            body = json.loads(raw_bytes or b"{}")
 
             # Aircall events have "resource", Meta events have "object"
             if body.get("resource") == "message":
@@ -47,6 +65,11 @@ def lambda_handler(event, context):
             if event_type == "opportunity-changed":
                 handle_opportunity_changed(body)
                 return {"statusCode": 200, "body": "OK"}
+
+            # Meta (Facebook/Instagram) events must carry a valid app-signed signature.
+            if not _verify_meta_signature(event, raw_bytes):
+                print("Meta signature verification failed - rejecting")
+                return {"statusCode": 403, "body": "Forbidden"}
 
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")
