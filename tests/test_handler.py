@@ -1,5 +1,7 @@
 ﻿"""Pure unit tests - every external dependency is mocked."""
 
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -25,6 +27,17 @@ ENV_VARS = {
     "APP_SECRET": "test-app-secret",
     "ENABLE_OPENAI_ANSWER": "true",
 }
+
+
+def _signed_post(body: dict) -> dict:
+    """Build a POST event with a valid Meta X-Hub-Signature-256 for the test APP_SECRET."""
+    raw = json.dumps(body)
+    sig = "sha256=" + hmac.new(b"test-app-secret", raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    return {
+        "requestContext": {"http": {"method": "POST"}},
+        "headers": {"x-hub-signature-256": sig},
+        "body": raw,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -65,29 +78,20 @@ class TestLambdaHandler:
         assert self.handler(event, None)["statusCode"] == 405
 
     def test_post_empty_body_returns_200(self):
-        event = {
-            "requestContext": {"http": {"method": "POST"}},
-            "body": "{}",
-        }
+        event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
     @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
         entry = {"id": "p1", "changes": [{"field": "feed", "value": {"item": "comment", "comment_id": "c1"}}]}
-        event = {
-            "requestContext": {"http": {"method": "POST"}},
-            "body": json.dumps({"entry": [entry]}),
-        }
+        event = _signed_post({"entry": [entry]})
         self.handler(event, None)
         mock_comment.assert_called_once()
 
     @patch("handler.process_leadgen")
     def test_post_leadgen_dispatches(self, mock_lead):
         entry = {"id": "p1", "changes": [{"field": "leadgen", "value": {"leadgen_id": "L1", "page_id": "p1"}}]}
-        event = {
-            "requestContext": {"http": {"method": "POST"}},
-            "body": json.dumps({"entry": [entry]}),
-        }
+        event = _signed_post({"entry": [entry]})
         self.handler(event, None)
         mock_lead.assert_called_once()
 
@@ -97,10 +101,7 @@ class TestLambdaHandler:
             "id": "p1",
             "messaging": [{"sender": {"id": "u1"}, "message": {"text": "hi", "mid": "m1"}}],
         }
-        event = {
-            "requestContext": {"http": {"method": "POST"}},
-            "body": json.dumps({"entry": [entry]}),
-        }
+        event = _signed_post({"entry": [entry]})
         self.handler(event, None)
         mock_msg.assert_called_once()
 
@@ -110,10 +111,7 @@ class TestLambdaHandler:
             "id": "p1",
             "messaging": [{"sender": {"id": "p1"}, "recipient": {"id": "u1"}, "message": {"text": "hi", "mid": "m1", "is_echo": True}}],
         }
-        event = {
-            "requestContext": {"http": {"method": "POST"}},
-            "body": json.dumps({"entry": [entry]}),
-        }
+        event = _signed_post({"entry": [entry]})
         self.handler(event, None)
         mock_echo.assert_called_once()
 

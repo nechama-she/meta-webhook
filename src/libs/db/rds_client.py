@@ -509,8 +509,16 @@ def get_lead_by_smartmoving_id(smartmoving_id: str) -> dict | None:
         return None
 
 
+_ALLOWED_TEMPLATE_COLUMNS = {
+    "welcome_sms", "rep_assignment_sms", "day2_followup_sms", "day3_followup_sms",
+}
+
+
 def get_company_template(company_id: str, column: str) -> str | None:
     """Look up a message template column for a company from company_message_templates."""
+    if column not in _ALLOWED_TEMPLATE_COLUMNS:
+        print(f"get_company_template: rejected non-allowlisted column {column!r}")
+        return None
     row = _exec_fetchone(
         f"SELECT {column} FROM company_message_templates WHERE company_id = %s LIMIT 1",
         (str(company_id),),
