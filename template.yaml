@@ -17,6 +17,17 @@ Parameters:
     Type: String
     Description: RDS database name
     Default: moving_crm
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Private subnet IDs for the Lambdas (empty = not in a VPC).
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Security group IDs for the Lambdas (must reach RDS + have egress via NAT).
+
+Conditions:
+  InVpc: !Not [!Equals [!Join ["", !Ref VpcSubnetIds], ""]]
 
 Resources:
 
@@ -58,12 +69,19 @@ Resources:
             - Effect: Allow
               Action:
                 - secretsmanager:GetSecretValue
-              Resource: '*'
+              Resource: !Ref RdsSecretArn
         - Statement:
             - Effect: Allow
               Action:
                 - ssm:GetParameter
-              Resource: '*'
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/*"
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/moving-crm/${Environment}/*"
+      VpcConfig: !If
+        - InVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds: !Ref VpcSecurityGroupIds
+        - !Ref "AWS::NoValue"
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
@@ -75,9 +93,9 @@ Resources:
           VERIFY_TOKEN: '{{resolve:ssm:/meta-webhook/VERIFY_TOKEN}}'
           AIRCALL_API_ID: '{{resolve:ssm:/meta-webhook/AIRCALL_API_ID}}'
           AIRCALL_API_TOKEN: '{{resolve:ssm:/meta-webhook/AIRCALL_API_TOKEN}}'
-          SMARTMOVING_API_KEY: '{{resolve:ssm:/moving-crm/dev/SMARTMOVING_API_KEY}}'
+          SMARTMOVING_API_KEY: !Sub '{{resolve:ssm:/moving-crm/${Environment}/SMARTMOVING_API_KEY}}'
           MOVING_CRM_API_SECRET: '{{resolve:ssm:/meta-webhook/MOVING_CRM_API_SECRET}}'
-          MOVING_CRM_API_BASE_URL: '{{resolve:ssm:/moving-crm/dev/API_BASE_URL}}'
+          MOVING_CRM_API_BASE_URL: !Sub '{{resolve:ssm:/moving-crm/${Environment}/API_BASE_URL}}'
           MOVING_CRM_ADMIN_EMAIL: 'admin@gorillamove.com'
           MOVING_CRM_ADMIN_PASSWORD_PARAM: '/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
           CHAT_API_URL: '{{resolve:ssm:/meta-webhook/CHAT_API_URL}}'
@@ -129,6 +147,11 @@ Resources:
               Resource:
                 - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/GOOGLE_SHEETS_CREDENTIALS'
                 - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
+      VpcConfig: !If
+        - InVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds: !Ref VpcSecurityGroupIds
+        - !Ref "AWS::NoValue"
       DeadLetterQueue:
         Type: SQS
         TargetArn: !GetAtt LeadPollDLQ.Arn
@@ -148,7 +171,7 @@ Resources:
           GRANOT_MOVER_REF: '{{resolve:ssm:/meta-webhook/GRANOT_MOVER_REF}}'
           BORAT_LEADS_SPREADSHEET_ID: '{{resolve:ssm:/meta-webhook/BORAT_LEADS_SPREADSHEET_ID}}'
           MOVING_CRM_API_SECRET: '{{resolve:ssm:/meta-webhook/MOVING_CRM_API_SECRET}}'
-          MOVING_CRM_API_BASE_URL: '{{resolve:ssm:/moving-crm/dev/API_BASE_URL}}'
+          MOVING_CRM_API_BASE_URL: !Sub '{{resolve:ssm:/moving-crm/${Environment}/API_BASE_URL}}'
           MOVING_CRM_ADMIN_EMAIL: 'admin@gorillamove.com'
           MOVING_CRM_ADMIN_PASSWORD_PARAM: '/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
       Events:

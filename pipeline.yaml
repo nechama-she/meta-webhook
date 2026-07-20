@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CI/CD pipeline for meta-webhook (prod) - runs sam build + sam deploy in CodeBuild
+
+Parameters:
+  GitHubConnectionArn:
+    Type: String
+  GitHubRepo:
+    Type: String
+    Default: IdanZad/meta-webhook
+  GitHubBranch:
+    Type: String
+    Default: prod
+  RdsSecretArn:
+    Type: String
+  RdsHost:
+    Type: String
+  VpcSubnetIds:
+    Type: String
+    Description: Comma-separated private subnet IDs
+  VpcSecurityGroupIds:
+    Type: String
+    Description: Comma-separated security group IDs
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub meta-webhook-pipeline-${AWS::AccountId}
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupOldArtifacts
+            Status: Enabled
+            ExpirationInDays: 30
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: meta-webhook-codebuild-prod
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DeployPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*"
+              - Effect: Allow
+                Action: [s3:*]
+                Resource: "*"
+              - Effect: Allow
+                Action: [cloudformation:*]
+                Resource: "*"
+              - Effect: Allow
+                Action: [lambda:*, apigateway:*, sqs:*, scheduler:*, events:*, cloudwatch:*]
+                Resource: "*"
+              - Effect: Allow
+                Action: [iam:*]
+                Resource: "*"
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters]
+                Resource: "*"
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: "*"
+              - Effect: Allow
+                Action: [ec2:*]
+                Resource: "*"
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: meta-webhook-prod
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      TimeoutInMinutes: 25
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.12
+              commands:
+                - pip install -e . -q
+                - pip install -r requirements-dev.txt -q
+            pre_build:
+              commands:
+                - echo "Running unit tests"
+                - python -m pytest tests/ -q
+            build:
+              commands:
+                - echo "Building with SAM"
+                - sam build
+                - echo "Deploying to prod"
+                - sam deploy --stack-name meta-webhook-prod --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --capabilities CAPABILITY_IAM --region ${AWS::Region} --parameter-overrides Environment=prod RdsSecretArn=${RdsSecretArn} RdsHost=${RdsHost} RdsDbName=moving_crm VpcSubnetIds=${VpcSubnetIds} VpcSecurityGroupIds=${VpcSecurityGroupIds}
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: meta-webhook-pipeline-prod
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelinePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:GetBucketLocation, s3:GetBucketVersioning]
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action: [codebuild:BatchGetBuilds, codebuild:StartBuild]
+                Resource: !GetAtt CodeBuildProject.Arn
+              - Effect: Allow
+                Action: [codestar-connections:UseConnection, codeconnections:UseConnection]
+                Resource: !Ref GitHubConnectionArn
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: meta-webhook-prod
+      PipelineType: V2
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Triggers:
+        - ProviderType: CodeStarSourceConnection
+          GitConfiguration:
+            SourceActionName: Source
+            Push:
+              - Branches:
+                  Includes:
+                    - !Ref GitHubBranch
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+                DetectChanges: "false"
+              OutputArtifacts:
+                - Name: SourceCode
+        - Name: Build
+          Actions:
+            - Name: BuildDeploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceCode
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
