@@ -99,14 +99,14 @@ def _invalidate_page_token(page_id: str) -> None:
     cache_set(f"{_CACHE_PREFIX}{page_id}", "")
 
 
-def _is_token_error(exc: urllib.error.HTTPError) -> bool:
+def _is_token_error(exc: urllib.error.HTTPError, error_body: str | None = None) -> bool:
     """Return True if the error indicates an invalid/expired token."""
-    if exc.code in (400, 401):
+    if exc.code in (400, 401, 403):
         try:
-            body = exc.read().decode("utf-8", "ignore")
+            body = error_body if error_body is not None else exc.read().decode("utf-8", "ignore")
             return "OAuthException" in body or "Invalid OAuth" in body or "access token" in body.lower()
         except Exception:
-            return True
+            return exc.code in (400, 401)
     return False
 
 
@@ -155,34 +155,59 @@ def _send_messenger_request(recipient_id: str, message_text: str, token: str) ->
         "recipient": {"id": recipient_id},
         "message": {"text": message_text},
     }
+    request_body = json.dumps(payload, ensure_ascii=False)
+    print(
+        "Meta Messenger request: "
+        f"method=POST endpoint=/v18.0/me/messages body={request_body}"
+    )
     req = urllib.request.Request(
         url,
-        data=json.dumps(payload).encode("utf-8"),
+        data=request_body.encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
-        print(f"Sent message to {recipient_id}: {resp.read().decode('utf-8')}")
+        response_body = resp.read().decode("utf-8", "ignore")
+        print(
+            "Meta Messenger response: "
+            f"status={resp.status} body={response_body}"
+        )
 
 
 def send_messenger_message(
     recipient_id: str,
     message_text: str,
     page_id: str,
-) -> None:
+) -> bool:
     """Send a text message to a Messenger user."""
     token = get_page_token(page_id)
     try:
         _send_messenger_request(recipient_id, message_text, token)
+        return True
     except urllib.error.HTTPError as exc:
-        if _is_token_error(exc):
+        error_body = exc.read().decode("utf-8", "ignore")
+        print(
+            "Meta Messenger response: "
+            f"status={exc.code} body={error_body} recipient_id={recipient_id}"
+        )
+        if _is_token_error(exc, error_body):
+            print(f"Page token rejected for {page_id}; invalidating cache and retrying once")
             _invalidate_page_token(page_id)
             token = get_page_token(page_id)
-            _send_messenger_request(recipient_id, message_text, token)
-        else:
-            print(f"Error sending message to {recipient_id}: {repr(exc)}")
+            try:
+                _send_messenger_request(recipient_id, message_text, token)
+                return True
+            except urllib.error.HTTPError as retry_exc:
+                retry_body = retry_exc.read().decode("utf-8", "ignore")
+                print(
+                    "Meta Messenger retry response: "
+                    f"status={retry_exc.code} body={retry_body} recipient_id={recipient_id}"
+                )
+            except Exception as retry_exc:
+                print(f"Error sending message to {recipient_id} after token refresh: {repr(retry_exc)}")
     except Exception as exc:
         print(f"Error sending message to {recipient_id}: {repr(exc)}")
+    return False
 
 
 # ── Leads ─────────────────────────────────────────────────────────────

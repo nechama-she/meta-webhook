@@ -19,14 +19,21 @@ APP_SECRET = os.environ.get("APP_SECRET", "")
 def _verify_meta_signature(event: dict, raw_bytes: bytes) -> bool:
     """Verify Meta's X-Hub-Signature-256 (HMAC-SHA256 of the raw body with APP_SECRET)."""
     if not APP_SECRET:
-        print("Signature check: APP_SECRET not configured - rejecting")
+        print("Meta signature check failed: APP_SECRET is not configured")
         return False
     headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
     sig = headers.get("x-hub-signature-256", "")
+    if not sig:
+        print("Meta signature check failed: X-Hub-Signature-256 header is missing")
+        return False
     if not sig.startswith("sha256="):
+        print("Meta signature check failed: X-Hub-Signature-256 header has an invalid format")
         return False
     expected = hmac.new(APP_SECRET.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, sig.split("=", 1)[1])
+    if not hmac.compare_digest(expected, sig.split("=", 1)[1]):
+        print(f"Meta signature check failed: HMAC mismatch (body_bytes={len(raw_bytes)})")
+        return False
+    return True
 
 
 def lambda_handler(event, context):
@@ -68,8 +75,20 @@ def lambda_handler(event, context):
 
             # Meta (Facebook/Instagram) events must carry a valid app-signed signature.
             if not _verify_meta_signature(event, raw_bytes):
-                print("Meta signature verification failed - rejecting")
-                return {"statusCode": 403, "body": "Forbidden"}
+                headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
+                http_context = (event.get("requestContext") or {}).get("http") or {}
+                app_env = os.environ.get("APP_ENV", "prod").strip().lower()
+                print(
+                    f"Meta signature verification failed - {'continuing' if app_env == 'dev' else 'rejecting'}: "
+                    f"object={body.get('object')!r} "
+                    f"body_keys={sorted(body.keys())} "
+                    f"source_ip={http_context.get('sourceIp')!r} "
+                    f"user_agent={headers.get('user-agent')!r} "
+                    f"content_type={headers.get('content-type')!r} "
+                    f"base64_encoded={bool(event.get('isBase64Encoded'))}"
+                )
+                if app_env != "dev":
+                    return {"statusCode": 403, "body": "Forbidden"}
 
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")

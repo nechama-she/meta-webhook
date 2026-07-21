@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 
 from pipeline.actions.smartmoving import _clean_phone
 
-_CRM_URL = "https://m6efygcjve.execute-api.us-east-1.amazonaws.com/api/leads"
+_CRM_BASE_URL = os.environ.get("MOVING_CRM_API_BASE_URL", "").rstrip("/")
+_CRM_URL = f"{_CRM_BASE_URL}/api/leads" if _CRM_BASE_URL else ""
 _CRM_API_SECRET = os.environ.get("MOVING_CRM_API_SECRET", "")
 ALLOWED_LEAD_STATUSES = {
     "new",
@@ -35,6 +36,11 @@ def _normalize_status(value: str) -> str:
 
 def send_to_moving_crm(data: dict) -> dict:
     """Send lead to Moving CRM after SmartMoving creation."""
+    if not _CRM_URL:
+        print("Moving CRM: MOVING_CRM_API_BASE_URL is not configured")
+        data["moving_crm_ok"] = False
+        return data
+
     # Extract facebook_user_id from inbox_url
     inbox_url = data.get("inbox_url", "")
     print(f"Moving CRM: inbox_url={inbox_url}")

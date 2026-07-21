@@ -21,6 +21,7 @@ sys.modules["boto3.dynamodb"] = _mock_boto3.dynamodb
 sys.modules["boto3.dynamodb.conditions"] = _mock_boto3.dynamodb.conditions
 
 ENV_VARS = {
+    "APP_ENV": "dev",
     "VERIFY_TOKEN": "test_verify_token",
     "OPENAI_API_KEY": "test-openai-key",
     "COMMENTS_DETECTION_USER_TOKEN": "test-user-token",
@@ -80,6 +81,32 @@ class TestLambdaHandler:
     def test_post_empty_body_returns_200(self):
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
+
+    def test_post_missing_signature_logs_reason_and_continues(self, capsys):
+        event = _signed_post({"object": "page"})
+        event["headers"] = {"user-agent": "Meta-Test"}
+
+        assert self.handler(event, None)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "X-Hub-Signature-256 header is missing" in logs
+        assert "object='page'" in logs
+        assert "user_agent='Meta-Test'" in logs
+
+    def test_post_invalid_signature_logs_hmac_mismatch_and_continues(self, capsys):
+        event = _signed_post({"object": "page"})
+        event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
+
+        assert self.handler(event, None)["statusCode"] == 200
+        assert "HMAC mismatch" in capsys.readouterr().out
+
+    def test_prod_invalid_signature_is_rejected(self, capsys):
+        event = _signed_post({"object": "page"})
+        event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
+
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            assert self.handler(event, None)["statusCode"] == 403
+        assert "failed - rejecting" in capsys.readouterr().out
 
     @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
@@ -289,10 +316,30 @@ class TestLeadPollHandler:
     @patch("lead_poll_service.poll_leads", return_value=3)
     def test_lead_poll_handler_returns_count(self, mock_poll):
         from lead_poll_function import lead_poll_handler
-        resp = lead_poll_handler({}, None)
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            resp = lead_poll_handler({}, None)
         mock_poll.assert_called_once()
         assert resp["statusCode"] == 200
         assert "3" in resp["body"]
+
+    @patch("lead_poll_service.poll_leads")
+    def test_dev_schedule_does_not_poll_live_leads(self, mock_poll):
+        from lead_poll_function import lead_poll_handler
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "dev"}):
+            resp = lead_poll_handler({}, None)
+        mock_poll.assert_not_called()
+        assert "disabled" in resp["body"].lower()
+
+    @patch("lead_poll_function.run_pipeline")
+    def test_dev_explicit_test_lead_runs_pipeline(self, mock_pipeline):
+        from lead_poll_function import lead_poll_handler
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "dev"}):
+            resp = lead_poll_handler({"test_lead": {"full_name": "Dev Test"}}, None)
+        payload = mock_pipeline.call_args[0][1]
+        assert payload["source"] == "dev_test"
+        assert payload["referral_source"] == "DEV-TEST"
+        assert payload["leadgen_id"].startswith("DEV-TEST-")
+        assert resp["statusCode"] == 200
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -350,6 +397,13 @@ class TestSmartMovingAction:
         send_to_smartmoving(self._make_lead(campaign="FL-GA-NC"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-FL-GA-NC"
+
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
+    def test_explicit_referral_source_overrides_default(self, mock_create):
+        from pipeline.actions.smartmoving import send_to_smartmoving
+        send_to_smartmoving(self._make_lead(referral_source="DEV-TEST"))
+        payload = mock_create.call_args[0][0]
+        assert payload["referralSource"] == "DEV-TEST"
 
     def test_clean_phone_strips_plus1(self):
         from pipeline.actions.smartmoving import _clean_phone
