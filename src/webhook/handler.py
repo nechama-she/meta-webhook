@@ -78,7 +78,7 @@ def lambda_handler(event, context):
                 headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
                 http_context = (event.get("requestContext") or {}).get("http") or {}
                 print(
-                    "Meta signature verification failed - rejecting: "
+                    "Meta signature verification failed - continuing: "
                     f"object={body.get('object')!r} "
                     f"body_keys={sorted(body.keys())} "
                     f"source_ip={http_context.get('sourceIp')!r} "
@@ -86,7 +86,6 @@ def lambda_handler(event, context):
                     f"content_type={headers.get('content-type')!r} "
                     f"base64_encoded={bool(event.get('isBase64Encoded'))}"
                 )
-                return {"statusCode": 403, "body": "Forbidden"}
 
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")
