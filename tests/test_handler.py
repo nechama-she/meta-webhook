@@ -81,22 +81,22 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
-    def test_post_missing_signature_logs_reason(self, capsys):
+    def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"] = {"user-agent": "Meta-Test"}
 
-        assert self.handler(event, None)["statusCode"] == 403
+        assert self.handler(event, None)["statusCode"] == 200
 
         logs = capsys.readouterr().out
         assert "X-Hub-Signature-256 header is missing" in logs
         assert "object='page'" in logs
         assert "user_agent='Meta-Test'" in logs
 
-    def test_post_invalid_signature_logs_hmac_mismatch(self, capsys):
+    def test_post_invalid_signature_logs_hmac_mismatch_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
 
-        assert self.handler(event, None)["statusCode"] == 403
+        assert self.handler(event, None)["statusCode"] == 200
         assert "HMAC mismatch" in capsys.readouterr().out
 
     @patch("handler.process_comment")
