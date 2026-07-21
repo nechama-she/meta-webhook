@@ -246,11 +246,10 @@ def _build_crm_payload(
         payload["priority"] = priority
 
     assigned_name = sales_assignee.get("name")
-    _add_if_value(payload, "assigned_to_name", assigned_name)
     if assigned_name:
-        user_id = get_user_id_by_name(assigned_name, role="sales_rep")
-        if user_id:
-            payload["assigned_to"] = user_id
+        payload["assigned_to_name"] = assigned_name
+    else:
+        _add_if_value(payload, "assigned_to", sales_assignee.get("id"))
 
     company_name = (branch.get("name") or existing_lead.get("company_name") or "").strip()
     _add_if_value(payload, "company_name", company_name)
