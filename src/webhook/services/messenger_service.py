@@ -156,8 +156,10 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     pattern_text = _pattern_reply(text, page_id)
     if pattern_text:
         print(f"Step 2: Pattern match – sending to {sender_id}")
-        send_messenger_message(sender_id, pattern_text, page_id)
-        print("Pattern reply sent")
+        if send_messenger_message(sender_id, pattern_text, page_id):
+            print("Pattern reply sent")
+        else:
+            print("Pattern reply failed")
 
     # 3. Call chat API (dry run – save reply but don't send to client)
     print("Step 3: Calling chat API...")
