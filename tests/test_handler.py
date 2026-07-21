@@ -312,6 +312,25 @@ class TestLeadPollHandler:
         assert resp["statusCode"] == 200
         assert "3" in resp["body"]
 
+    @patch("lead_poll_service.poll_leads")
+    def test_dev_schedule_does_not_poll_live_leads(self, mock_poll):
+        from lead_poll_function import lead_poll_handler
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "dev"}):
+            resp = lead_poll_handler({}, None)
+        mock_poll.assert_not_called()
+        assert "disabled" in resp["body"].lower()
+
+    @patch("lead_poll_function.run_pipeline")
+    def test_dev_explicit_test_lead_runs_pipeline(self, mock_pipeline):
+        from lead_poll_function import lead_poll_handler
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "dev"}):
+            resp = lead_poll_handler({"test_lead": {"full_name": "Dev Test"}}, None)
+        payload = mock_pipeline.call_args[0][1]
+        assert payload["source"] == "dev_test"
+        assert payload["referral_source"] == "DEV-TEST"
+        assert payload["leadgen_id"].startswith("DEV-TEST-")
+        assert resp["statusCode"] == 200
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  Pipeline – SmartMoving action
@@ -368,6 +387,13 @@ class TestSmartMovingAction:
         send_to_smartmoving(self._make_lead(campaign="FL-GA-NC"))
         payload = mock_create.call_args[0][0]
         assert payload["referralSource"] == "Facebook-Gorilla-HHG-FL-GA-NC"
+
+    @patch("pipeline.actions.smartmoving.create_lead", return_value='"xyz"')
+    def test_explicit_referral_source_overrides_default(self, mock_create):
+        from pipeline.actions.smartmoving import send_to_smartmoving
+        send_to_smartmoving(self._make_lead(referral_source="DEV-TEST"))
+        payload = mock_create.call_args[0][0]
+        assert payload["referralSource"] == "DEV-TEST"
 
     def test_clean_phone_strips_plus1(self):
         from pipeline.actions.smartmoving import _clean_phone

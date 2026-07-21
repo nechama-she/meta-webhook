@@ -73,7 +73,11 @@ def _build_payload(data: dict) -> dict:
         f"message: {message}"
     )
 
-    referral_source = _PAGE_REFERRAL.get(page_id) or _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    referral_source = (
+        data.get("referral_source")
+        or _PAGE_REFERRAL.get(page_id)
+        or _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    )
 
     return {
         "fullName": full_name,
