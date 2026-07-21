@@ -10,7 +10,7 @@ from crm.moving_crm import get_companies, lead_exists_by_leadgen_id
 LEAD_POLL_LOOKBACK_MINUTES = 40
 
 
-def poll_leads() -> int:
+def poll_leads(trace: dict | None = None) -> int:
     """Pull recent leads from all company pages and save new ones.
 
     Returns the number of *new* leads saved (duplicates are skipped).
@@ -69,6 +69,8 @@ def poll_leads() -> int:
                         "smartmoving_branch_id": branch_id,
                         "granot_api_id": granot_api_id,
                         "granot_mover_ref": granot_mover_ref,
+                        "_lambda_request_id": (trace or {}).get("request_id", ""),
+                        "_lambda_invoked_arn": (trace or {}).get("invoked_arn", ""),
                     }
                     for field in lead.get("field_data", []):
                         name = field.get("name", "")

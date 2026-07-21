@@ -39,7 +39,15 @@ def _build_payload(data: dict) -> dict:
     move_size = data.get("move_size", data.get("moveSize", "Room or Less"))
     campaign = data.get("campaign", "")
     page_id = str(data.get("page_id") or "").strip()
-    pushed_by = f"lambda:{os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'unknown')}"
+    pushed_by_parts = [f"lambda:{os.environ.get('AWS_LAMBDA_FUNCTION_NAME', 'unknown')}"]
+    trace_values = (
+        ("arn", data.get("_lambda_invoked_arn")),
+        ("requestId", data.get("_lambda_request_id")),
+        ("logGroup", os.environ.get("AWS_LAMBDA_LOG_GROUP_NAME")),
+        ("logStream", os.environ.get("AWS_LAMBDA_LOG_STREAM_NAME")),
+    )
+    pushed_by_parts.extend(f"{key}:{value}" for key, value in trace_values if value)
+    pushed_by = " | ".join(pushed_by_parts)
 
     message = (
         f"pickup {ozip}\n"
@@ -65,7 +73,11 @@ def _build_payload(data: dict) -> dict:
         f"message: {message}"
     )
 
-    referral_source = _PAGE_REFERRAL.get(page_id) or _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    referral_source = (
+        data.get("referral_source")
+        or _PAGE_REFERRAL.get(page_id)
+        or _CAMPAIGN_REFERRAL.get(campaign, _DEFAULT_REFERRAL)
+    )
 
     return {
         "fullName": full_name,

@@ -28,6 +28,7 @@ Parameters:
 
 Conditions:
   InVpc: !Not [!Equals [!Join ["", !Ref VpcSubnetIds], ""]]
+  IsProd: !Equals [!Ref Environment, prod]
 
 Resources:
 
@@ -86,6 +87,7 @@ Resources:
         AuthType: NONE
       Environment:
         Variables:
+          APP_ENV: !Ref Environment
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
           ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'
@@ -157,6 +159,7 @@ Resources:
         TargetArn: !GetAtt LeadPollDLQ.Arn
       Environment:
         Variables:
+          APP_ENV: !Ref Environment
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
           OPENAI_API_KEY: '{{resolve:ssm:/meta-webhook/OPENAI_API_KEY}}'
@@ -179,7 +182,7 @@ Resources:
           Type: ScheduleV2
           Properties:
             ScheduleExpression: rate(30 minutes)
-            State: ENABLED
+            State: !If [IsProd, ENABLED, DISABLED]
             RetryPolicy:
               MaximumRetryAttempts: 2
               MaximumEventAgeInSeconds: 900
