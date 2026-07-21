@@ -77,8 +77,9 @@ def lambda_handler(event, context):
             if not _verify_meta_signature(event, raw_bytes):
                 headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
                 http_context = (event.get("requestContext") or {}).get("http") or {}
+                app_env = os.environ.get("APP_ENV", "prod").strip().lower()
                 print(
-                    "Meta signature verification failed - continuing: "
+                    f"Meta signature verification failed - {'continuing' if app_env == 'dev' else 'rejecting'}: "
                     f"object={body.get('object')!r} "
                     f"body_keys={sorted(body.keys())} "
                     f"source_ip={http_context.get('sourceIp')!r} "
@@ -86,6 +87,8 @@ def lambda_handler(event, context):
                     f"content_type={headers.get('content-type')!r} "
                     f"base64_encoded={bool(event.get('isBase64Encoded'))}"
                 )
+                if app_env != "dev":
+                    return {"statusCode": 403, "body": "Forbidden"}
 
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")

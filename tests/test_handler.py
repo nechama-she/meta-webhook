@@ -21,6 +21,7 @@ sys.modules["boto3.dynamodb"] = _mock_boto3.dynamodb
 sys.modules["boto3.dynamodb.conditions"] = _mock_boto3.dynamodb.conditions
 
 ENV_VARS = {
+    "APP_ENV": "dev",
     "VERIFY_TOKEN": "test_verify_token",
     "OPENAI_API_KEY": "test-openai-key",
     "COMMENTS_DETECTION_USER_TOKEN": "test-user-token",
@@ -98,6 +99,14 @@ class TestLambdaHandler:
 
         assert self.handler(event, None)["statusCode"] == 200
         assert "HMAC mismatch" in capsys.readouterr().out
+
+    def test_prod_invalid_signature_is_rejected(self, capsys):
+        event = _signed_post({"object": "page"})
+        event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
+
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            assert self.handler(event, None)["statusCode"] == 403
+        assert "failed - rejecting" in capsys.readouterr().out
 
     @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
@@ -307,7 +316,8 @@ class TestLeadPollHandler:
     @patch("lead_poll_service.poll_leads", return_value=3)
     def test_lead_poll_handler_returns_count(self, mock_poll):
         from lead_poll_function import lead_poll_handler
-        resp = lead_poll_handler({}, None)
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            resp = lead_poll_handler({}, None)
         mock_poll.assert_called_once()
         assert resp["statusCode"] == 200
         assert "3" in resp["body"]
