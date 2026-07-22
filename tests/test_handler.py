@@ -82,6 +82,26 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
+    def test_meta_event_log_includes_complete_event_and_context(self, capsys):
+        event = _signed_post({"object": "page", "entry": [{"id": "p1"}]})
+        context = MagicMock()
+        context.aws_request_id = "request-123"
+        context.invoked_function_arn = "arn:aws:lambda:us-east-1:123:function:test"
+        context.function_name = "test"
+        context.function_version = "$LATEST"
+        context.memory_limit_in_mb = "256"
+        context.log_group_name = "/aws/lambda/test"
+        context.log_stream_name = "stream-123"
+        context.get_remaining_time_in_millis.return_value = 25000
+
+        assert self.handler(event, context)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "META_WEBHOOK_EVENT" in logs
+        assert '"aws_request_id": "request-123"' in logs
+        assert '"body": "{\\"object\\": \\"page\\"' in logs
+        assert event["headers"]["x-hub-signature-256"] in logs
+
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"] = {"user-agent": "Meta-Test"}
