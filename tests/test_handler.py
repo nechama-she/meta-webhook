@@ -82,6 +82,26 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
+    def test_meta_event_log_includes_complete_event_and_context(self, capsys):
+        event = _signed_post({"object": "page", "entry": [{"id": "p1"}]})
+        context = MagicMock()
+        context.aws_request_id = "request-123"
+        context.invoked_function_arn = "arn:aws:lambda:us-east-1:123:function:test"
+        context.function_name = "test"
+        context.function_version = "$LATEST"
+        context.memory_limit_in_mb = "256"
+        context.log_group_name = "/aws/lambda/test"
+        context.log_stream_name = "stream-123"
+        context.get_remaining_time_in_millis.return_value = 25000
+
+        assert self.handler(event, context)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "META_WEBHOOK_EVENT" in logs
+        assert '"aws_request_id": "request-123"' in logs
+        assert '"body": "{\\"object\\": \\"page\\"' in logs
+        assert event["headers"]["x-hub-signature-256"] in logs
+
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"] = {"user-agent": "Meta-Test"}
@@ -1305,7 +1325,7 @@ class TestOpportunityChanged:
 
     @pytest.fixture(autouse=True)
     def _env(self):
-        with patch.dict(os.environ, ENV_VARS):
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod", "REP_ASSIGNMENT_DRY_RUN": "false"}):
             yield
 
     def _event(self):
@@ -1373,6 +1393,38 @@ class TestOpportunityChanged:
         assert resp["statusCode"] == 200
         mock_sms.assert_called_once()
         assert "Sean Edson" in mock_sms.call_args[0][2]
+
+    @patch("services.smartmoving_service.try_claim_dedupe_key")
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_dev_dry_run_builds_but_does_not_send_or_claim_dedupe(
+        self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms, mock_dedupe, capsys
+    ):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_user.return_value = "user-123"
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": "2403586309",
+            "company_name": "Gorilla Haulers",
+        }
+
+        from handler import lambda_handler
+        with patch.dict(os.environ, {"REP_ASSIGNMENT_DRY_RUN": "true"}):
+            resp = lambda_handler(self._event(), None)
+
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+        mock_dedupe.assert_not_called()
+        output = capsys.readouterr().out
+        assert "DRY RUN: intro SMS not sent" in output
+        assert "+12403586309" in output
+        assert "Eli Jones" in output
 
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_audit_activity")

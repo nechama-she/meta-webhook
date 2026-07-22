@@ -1,6 +1,7 @@
 """Handle SmartMoving webhook events."""
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -393,6 +394,15 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     # Different reps can each send their own intro once.
     rep_key = str(aircall_number_id).strip()
     dedupe_key = f"SMS_INTRO:{rep_key}:{phone}"
+
+    if os.environ.get("REP_ASSIGNMENT_DRY_RUN", "false").strip().lower() == "true":
+        print(
+            "DRY RUN: intro SMS not sent and dedupe not claimed: "
+            f"rep={rep_name}, aircall_number_id={aircall_number_id}, phone={phone}, "
+            f"key={dedupe_key}, message={message!r}"
+        )
+        return
+
     is_first_intro_for_phone = try_claim_dedupe_key(dedupe_key)
     already_sent_intro_sms = not is_first_intro_for_phone
     print(
