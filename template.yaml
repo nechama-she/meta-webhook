@@ -88,6 +88,7 @@ Resources:
       Environment:
         Variables:
           APP_ENV: !Ref Environment
+          REP_ASSIGNMENT_DRY_RUN: !If [IsProd, 'false', 'true']
           APP_SECRET: '{{resolve:ssm:/meta-webhook/APP_SECRET}}'
           COMMENTS_DETECTION_USER_TOKEN: '{{resolve:ssm:/meta-webhook/COMMENTS_DETECTION_USER_TOKEN}}'
           ENABLE_OPENAI_ANSWER: '{{resolve:ssm:/meta-webhook/ENABLE_OPENAI_ANSWER}}'

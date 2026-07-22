@@ -1325,7 +1325,7 @@ class TestOpportunityChanged:
 
     @pytest.fixture(autouse=True)
     def _env(self):
-        with patch.dict(os.environ, ENV_VARS):
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod", "REP_ASSIGNMENT_DRY_RUN": "false"}):
             yield
 
     def _event(self):
@@ -1393,6 +1393,38 @@ class TestOpportunityChanged:
         assert resp["statusCode"] == 200
         mock_sms.assert_called_once()
         assert "Sean Edson" in mock_sms.call_args[0][2]
+
+    @patch("services.smartmoving_service.try_claim_dedupe_key")
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_dev_dry_run_builds_but_does_not_send_or_claim_dedupe(
+        self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms, mock_dedupe, capsys
+    ):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_user.return_value = "user-123"
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": "2403586309",
+            "company_name": "Gorilla Haulers",
+        }
+
+        from handler import lambda_handler
+        with patch.dict(os.environ, {"REP_ASSIGNMENT_DRY_RUN": "true"}):
+            resp = lambda_handler(self._event(), None)
+
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+        mock_dedupe.assert_not_called()
+        output = capsys.readouterr().out
+        assert "DRY RUN: intro SMS not sent" in output
+        assert "+12403586309" in output
+        assert "Eli Jones" in output
 
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_audit_activity")
