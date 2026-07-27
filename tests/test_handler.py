@@ -1345,6 +1345,54 @@ class TestOpportunityChanged:
         event["body"] = json.dumps(payload)
         return event
 
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_patch_payload_contains_prior_request_logs(self, mock_opp, mock_lead, mock_patch):
+        request_logs = [
+            {
+                "request": {
+                    "method": "GET",
+                    "url": "https://api.example/opportunity",
+                    "headers": {"x-api-key": "[REDACTED]"},
+                    "payload": {},
+                },
+                "response": {"status_code": 200, "body": {"id": self._OPP_ID}},
+            }
+        ]
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 4,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, request_logs=request_logs)
+        payload = mock_patch.call_args.args[1]
+        assert payload["logs"] == request_logs
+        assert mock_patch.call_args.kwargs["request_logs"] is request_logs
+
+    def test_request_logs_redact_credentials(self):
+        from request_trace import append_request_log
+
+        logs = []
+        append_request_log(
+            logs,
+            method="POST",
+            url="https://api.example/login",
+            headers={"Authorization": "Bearer secret", "X-Api-Key": "secret"},
+            payload={"email": "admin@example.com", "password": "secret"},
+            status_code=200,
+            response_body={"accessToken": "secret"},
+        )
+
+        assert logs[0]["request"]["headers"]["Authorization"] == "[REDACTED]"
+        assert logs[0]["request"]["headers"]["X-Api-Key"] == "[REDACTED]"
+        assert logs[0]["request"]["payload"]["password"] == "[REDACTED]"
+        assert logs[0]["response"]["body"]["accessToken"] == "[REDACTED]"
+
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_user_id_by_name")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
@@ -1535,7 +1583,11 @@ class TestOpportunityChanged:
         from handler import lambda_handler
         resp = lambda_handler(self._event_with_status(4), None)
         assert resp["statusCode"] == 200
-        mock_ensure.assert_called_once_with(self._OPP_ID, "booked")
+        mock_ensure.assert_called_once_with(
+            self._OPP_ID,
+            "booked",
+            request_logs=mock_audit.call_args.kwargs["request_logs"],
+        )
 
     @patch("services.smartmoving_service._ensure_lead_exists")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
@@ -1552,7 +1604,11 @@ class TestOpportunityChanged:
         from handler import lambda_handler
         resp = lambda_handler(self._event_with_status(10), None)
         assert resp["statusCode"] == 200
-        mock_ensure.assert_called_once_with(self._OPP_ID, "completed")
+        mock_ensure.assert_called_once_with(
+            self._OPP_ID,
+            "completed",
+            request_logs=mock_audit.call_args.kwargs["request_logs"],
+        )
 
     @patch("services.smartmoving_service._ensure_lead_exists")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
