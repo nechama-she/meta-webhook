@@ -274,10 +274,22 @@ def _build_crm_payload(
     return payload
 
 
-def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None = None) -> bool:
-    opportunity = get_opportunity(opportunity_id, include_full=True)
+def _sync_opportunity_to_crm(
+    opportunity_id: str,
+    booked_move_date: str | None = None,
+    request_logs: list[dict] | None = None,
+) -> bool:
+    opportunity = get_opportunity(
+        opportunity_id,
+        include_full=True,
+        request_logs=request_logs,
+    )
     if not opportunity:
-        _, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
+        _, status_code, error_text = get_opportunity_result(
+            opportunity_id,
+            include_full=True,
+            request_logs=request_logs,
+        )
         if status_code != 200 and error_text and "specified opportunity was not found" in error_text.lower():
             print(
                 f"Opportunity {opportunity_id} missing in SmartMoving; deleting lead by smartmoving id in CRM"
@@ -293,7 +305,11 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
         mapped_status = _map_opportunity_status(opportunity.get("status"))
         if mapped_status in {"booked", "completed"}:
             print(f"Lead not found for {opportunity_id}; creating from SmartMoving status={mapped_status}")
-            _ensure_lead_exists(opportunity_id, mapped_status)
+            _ensure_lead_exists(
+                opportunity_id,
+                mapped_status,
+                request_logs=request_logs,
+            )
             existing_lead = get_lead_by_smartmoving_id(opportunity_id)
         else:
             print(f"Lead not found for {opportunity_id}; skipping CRM sync (status={mapped_status!r})")
@@ -314,11 +330,12 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
         existing_lead,
         booked_move_date=booked_move_date,
     )
+    payload["logs"] = request_logs or []
     print(
         "Opportunity patch payload "
         f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(payload, ensure_ascii=False, default=str)}"
     )
-    ok = patch_lead(crm_lead_id, payload)
+    ok = patch_lead(crm_lead_id, payload, request_logs=request_logs)
     if not ok and "assigned_to_name" in payload:
         retry_payload = dict(payload)
         retry_payload.pop("assigned_to_name", None)
@@ -326,7 +343,7 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
             "Opportunity patch retry payload "
             f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(retry_payload, ensure_ascii=False, default=str)}"
         )
-        ok = patch_lead(crm_lead_id, retry_payload)
+        ok = patch_lead(crm_lead_id, retry_payload, request_logs=request_logs)
 
     if ok and booked_move_date:
         docs_ok = sync_smartmoving_documents(opportunity_id)
@@ -423,9 +440,13 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     send_sms(int(aircall_number_id), phone, message)
 
 
-def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
+def _ensure_lead_exists(
+    opportunity_id: str,
+    status: str,
+    request_logs: list[dict] | None = None,
+) -> None:
     """Fetch opportunity from SmartMoving and create the lead via Moving CRM API."""
-    opp = get_opportunity(opportunity_id)
+    opp = get_opportunity(opportunity_id, request_logs=request_logs)
     if not opp:
         print(f"Could not fetch opportunity {opportunity_id}; lead not created")
         return
@@ -437,7 +458,7 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
     branch_id = str(branch.get("id") or "").strip()
     sm_branch_name = branch.get("name", "")
     company_name = sm_branch_name
-    companies = get_companies()
+    companies = get_companies(request_logs=request_logs)
     for c in companies:
         cid = str(c.get("smartmoving_branch_id") or c.get("samrtmoving_branch_id") or "").strip()
         if cid and cid == branch_id:
@@ -456,19 +477,22 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
     except Exception:
         move_date = ""
 
-    send_to_moving_crm({
-        "full_name": full_name,
-        "phone_number": phone,
-        "email": email,
-        "smartmoving_lead_id": opportunity_id,
-        "company_name": company_name,
-        "referral_source": referral_source,
-        "move_size": move_size,
-        "move_type": move_type,
-        "move_date": move_date,
-        "status": status,
-        "source": "SmartMoving",
-    })
+    send_to_moving_crm(
+        {
+            "full_name": full_name,
+            "phone_number": phone,
+            "email": email,
+            "smartmoving_lead_id": opportunity_id,
+            "company_name": company_name,
+            "referral_source": referral_source,
+            "move_size": move_size,
+            "move_type": move_type,
+            "move_date": move_date,
+            "status": status,
+            "source": "SmartMoving",
+        },
+        request_logs=request_logs,
+    )
 
 
 def handle_followup_created(body: dict) -> None:
@@ -510,14 +534,19 @@ def handle_opportunity_changed(body: dict) -> None:
         print("Missing opportunity-id in opportunity-changed event")
         return
 
-    activities = get_audit_activity(opportunity_id)
+    request_logs: list[dict] = []
+    activities = get_audit_activity(opportunity_id, request_logs=request_logs)
     print(f"Audit activity response for {opportunity_id}: {activities!r}")
     latest = activities[0] if activities else {}
     description = latest.get("description", "") if isinstance(latest, dict) else ""
     status_changed_to_booked = bool(_CHANGED_TO_BOOKED_RE.search(description))
     booked_move_date = _audit_created_at_to_eastern_date(latest) if status_changed_to_booked else None
 
-    _sync_opportunity_to_crm(opportunity_id, booked_move_date=booked_move_date)
+    _sync_opportunity_to_crm(
+        opportunity_id,
+        booked_move_date=booked_move_date,
+        request_logs=request_logs,
+    )
 
     if not activities:
         print(f"No audit activity for {opportunity_id}")

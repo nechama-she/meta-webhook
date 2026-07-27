@@ -4,6 +4,8 @@ import json
 import urllib.request
 import urllib.error
 
+from request_trace import append_request_log
+
 
 def request(
     url: str,
@@ -11,6 +13,7 @@ def request(
     body: bytes | None = None,
     headers: dict | None = None,
     timeout: int = 10,
+    request_logs: list[dict] | None = None,
 ) -> dict | list | str | None:
     """
     Make an HTTP request and return parsed response.
@@ -42,6 +45,15 @@ def request(
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8")
             print(f"HTTP RESPONSE: {resp.status} {raw}")
+            append_request_log(
+                request_logs,
+                method=method,
+                url=url,
+                headers=req_headers,
+                payload=body,
+                status_code=resp.status,
+                response_body=raw,
+            )
             
             # Try to parse as JSON
             try:
@@ -52,7 +64,25 @@ def request(
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", "ignore")
         print(f"HTTP ERROR: {exc.code} {error_body}")
+        append_request_log(
+            request_logs,
+            method=method,
+            url=url,
+            headers=req_headers,
+            payload=body,
+            status_code=exc.code,
+            response_body=error_body,
+        )
         return None
     except Exception as exc:
         print(f"HTTP ERROR: {repr(exc)}")
+        append_request_log(
+            request_logs,
+            method=method,
+            url=url,
+            headers=req_headers,
+            payload=body,
+            status_code=0,
+            response_body={"error": repr(exc)},
+        )
         return None

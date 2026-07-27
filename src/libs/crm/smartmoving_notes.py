@@ -5,6 +5,8 @@ import os
 import urllib.request
 import urllib.error
 
+from request_trace import append_request_log
+
 _BASE_URL = "https://api-public.smartmoving.com/v1/api/premium/opportunities"
 _OPP_URL = "https://api-public.smartmoving.com/v1/api/opportunities"
 _API_KEY = os.environ.get("SMARTMOVING_API_KEY", "")
@@ -76,12 +78,20 @@ def get_followups(opportunity_id: str) -> list | None:
     return None
 
 
-def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | None:
+def get_opportunity(
+    opportunity_id: str,
+    include_full: bool = False,
+    request_logs: list[dict] | None = None,
+) -> dict | None:
     """GET full opportunity details from SmartMoving.
 
     Returns the parsed JSON dict or None on error.
     """
-    data, status_code, error_text = get_opportunity_result(opportunity_id, include_full=include_full)
+    data, status_code, error_text = get_opportunity_result(
+        opportunity_id,
+        include_full=include_full,
+        request_logs=request_logs,
+    )
     if data is not None:
         print(f"SmartMoving opportunity {opportunity_id}: {status_code}")
         print(
@@ -97,7 +107,11 @@ def get_opportunity(opportunity_id: str, include_full: bool = False) -> dict | N
     return None
 
 
-def get_opportunity_result(opportunity_id: str, include_full: bool = False) -> tuple[dict | None, int | None, str | None]:
+def get_opportunity_result(
+    opportunity_id: str,
+    include_full: bool = False,
+    request_logs: list[dict] | None = None,
+) -> tuple[dict | None, int | None, str | None]:
     """GET full opportunity details from SmartMoving with error metadata.
 
     Returns a tuple of:
@@ -108,46 +122,106 @@ def get_opportunity_result(opportunity_id: str, include_full: bool = False) -> t
     url = f"{_OPP_URL}/{opportunity_id}"
     if include_full:
         url = f"{url}?{_OPP_INCLUDE_QUERY}"
+    headers = {
+        "Cache-Control": "no-cache",
+        "x-api-key": _API_KEY,
+    }
     req = urllib.request.Request(
         url,
-        headers={
-            "Cache-Control": "no-cache",
-            "x-api-key": _API_KEY,
-        },
+        headers=headers,
         method="GET",
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+            append_request_log(
+                request_logs,
+                method="GET",
+                url=url,
+                headers=headers,
+                payload={},
+                status_code=resp.status,
+                response_body=data,
+            )
             return data, resp.status, None
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "ignore")
+        append_request_log(
+            request_logs,
+            method="GET",
+            url=url,
+            headers=headers,
+            payload={},
+            status_code=exc.code,
+            response_body=body,
+        )
         return None, exc.code, body
     except Exception as exc:
+        append_request_log(
+            request_logs,
+            method="GET",
+            url=url,
+            headers=headers,
+            payload={},
+            status_code=0,
+            response_body={"error": repr(exc)},
+        )
         return None, None, repr(exc)
 
 
-def get_audit_activity(opportunity_id: str) -> list | None:
+def get_audit_activity(
+    opportunity_id: str,
+    request_logs: list[dict] | None = None,
+) -> list | None:
     """GET audit activity for a SmartMoving opportunity.
 
     Returns list of activity dicts or None on error.
     """
     url = f"{_OPP_URL}/{opportunity_id}/audit-activity"
+    headers = {
+        "Cache-Control": "no-cache",
+        "x-api-key": _API_KEY,
+    }
     req = urllib.request.Request(
         url,
-        headers={
-            "Cache-Control": "no-cache",
-            "x-api-key": _API_KEY,
-        },
+        headers=headers,
         method="GET",
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             print(f"SmartMoving audit activity for {opportunity_id}: {resp.status} ({len(data)} items)")
+            append_request_log(
+                request_logs,
+                method="GET",
+                url=url,
+                headers=headers,
+                payload={},
+                status_code=resp.status,
+                response_body=data,
+            )
             return data
     except urllib.error.HTTPError as exc:
-        print(f"SmartMoving audit activity HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+        error_body = exc.read().decode("utf-8", "ignore")
+        print(f"SmartMoving audit activity HTTP error: {exc.code} {error_body}")
+        append_request_log(
+            request_logs,
+            method="GET",
+            url=url,
+            headers=headers,
+            payload={},
+            status_code=exc.code,
+            response_body=error_body,
+        )
     except Exception as exc:
         print(f"SmartMoving audit activity error: {repr(exc)}")
+        append_request_log(
+            request_logs,
+            method="GET",
+            url=url,
+            headers=headers,
+            payload={},
+            status_code=0,
+            response_body={"error": repr(exc)},
+        )
     return None
