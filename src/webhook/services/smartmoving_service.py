@@ -308,6 +308,8 @@ def _sync_opportunity_to_crm(
             _ensure_lead_exists(
                 opportunity_id,
                 mapped_status,
+                opportunity=opportunity,
+                booked_move_date=booked_move_date,
                 request_logs=request_logs,
             )
             existing_lead = get_lead_by_smartmoving_id(opportunity_id)
@@ -443,10 +445,12 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
 def _ensure_lead_exists(
     opportunity_id: str,
     status: str,
+    opportunity: dict | None = None,
+    booked_move_date: str | None = None,
     request_logs: list[dict] | None = None,
 ) -> None:
-    """Fetch opportunity from SmartMoving and create the lead via Moving CRM API."""
-    opp = get_opportunity(opportunity_id, request_logs=request_logs)
+    """Create a CRM lead, reusing a previously fetched SmartMoving opportunity."""
+    opp = opportunity or get_opportunity(opportunity_id, request_logs=request_logs)
     if not opp:
         print(f"Could not fetch opportunity {opportunity_id}; lead not created")
         return
@@ -477,22 +481,23 @@ def _ensure_lead_exists(
     except Exception:
         move_date = ""
 
-    send_to_moving_crm(
-        {
-            "full_name": full_name,
-            "phone_number": phone,
-            "email": email,
-            "smartmoving_lead_id": opportunity_id,
-            "company_name": company_name,
-            "referral_source": referral_source,
-            "move_size": move_size,
-            "move_type": move_type,
-            "move_date": move_date,
-            "status": status,
-            "source": "SmartMoving",
-        },
-        request_logs=request_logs,
-    )
+    lead_data = {
+        "full_name": full_name,
+        "phone_number": phone,
+        "email": email,
+        "smartmoving_lead_id": opportunity_id,
+        "company_name": company_name,
+        "referral_source": referral_source,
+        "move_size": move_size,
+        "move_type": move_type,
+        "move_date": move_date,
+        "status": status,
+        "source": "SmartMoving",
+    }
+    if status == "booked" and booked_move_date:
+        lead_data["booked_move_date"] = booked_move_date
+
+    send_to_moving_crm(lead_data, request_logs=request_logs)
 
 
 def handle_followup_created(body: dict) -> None:

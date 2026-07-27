@@ -478,6 +478,29 @@ class TestLeadPipeline:
         result = run_pipeline("nonexistent", data)
         assert result is data
 
+    @patch("pipeline.actions.send_to_moving_crm.urllib.request.urlopen")
+    def test_booked_lead_post_includes_booked_move_date(self, mock_urlopen):
+        response = MagicMock()
+        response.status = 201
+        response.read.return_value = b'{"id":"crm-1"}'
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        import pipeline.actions.send_to_moving_crm as moving_crm_action
+
+        with patch.object(moving_crm_action, "_CRM_URL", "https://crm.example/api/leads"):
+            moving_crm_action.send_to_moving_crm(
+                {
+                    "full_name": "Yaritza Grant",
+                    "status": "booked",
+                    "booked_move_date": "2026-07-27",
+                }
+            )
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        assert payload["status"] == "booked"
+        assert payload["booked_move_date"] == "2026-07-27"
+
     @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
     @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
     def test_branch_sets_flag_on_data(self, mock_hm, mock_sheet):
@@ -1573,7 +1596,13 @@ class TestOpportunityChanged:
     @patch("services.smartmoving_service.get_opportunity")
     @patch("services.smartmoving_service.get_audit_activity")
     def test_creates_missing_lead_when_booked(self, mock_audit, mock_opp, mock_lead, mock_ensure):
-        mock_audit.return_value = [{"description": "Opportunity booked.", "activityType": 1}]
+        mock_audit.return_value = [
+            {
+                "description": "Opportunity changed to Booked.",
+                "activityType": 1,
+                "createdAtUtc": "2026-07-27T20:08:27.782911Z",
+            }
+        ]
         mock_opp.return_value = {
             "id": self._OPP_ID,
             "status": 4,
@@ -1586,6 +1615,8 @@ class TestOpportunityChanged:
         mock_ensure.assert_called_once_with(
             self._OPP_ID,
             "booked",
+            opportunity=mock_opp.return_value,
+            booked_move_date="2026-07-27",
             request_logs=mock_audit.call_args.kwargs["request_logs"],
         )
 
@@ -1607,6 +1638,8 @@ class TestOpportunityChanged:
         mock_ensure.assert_called_once_with(
             self._OPP_ID,
             "completed",
+            opportunity=mock_opp.return_value,
+            booked_move_date=None,
             request_logs=mock_audit.call_args.kwargs["request_logs"],
         )
 
