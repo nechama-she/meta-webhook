@@ -101,7 +101,7 @@ def _cache_companies(companies: list[dict]) -> None:
         print(f"Moving CRM companies cache set error: {repr(exc)}")
 
 
-def _login() -> str | None:
+def _login(request_logs: list[dict] | None = None) -> str | None:
     global _admin_token_cache
 
     if not _BASE_URL:
@@ -126,6 +126,7 @@ def _login() -> str | None:
         body=body,
         headers={"Content-Type": "application/json"},
         timeout=10,
+        request_logs=request_logs,
     )
     
     if not isinstance(payload, dict):
@@ -154,7 +155,7 @@ def get_company(page_id: str) -> dict | None:
     return None
 
 
-def get_companies() -> list[dict]:
+def get_companies(request_logs: list[dict] | None = None) -> list[dict]:
     """Return all companies from the Moving CRM API (cached for 24 hours)."""
     global _admin_token_cache
 
@@ -167,7 +168,7 @@ def get_companies() -> list[dict]:
         print("Moving CRM companies: MOVING_CRM_API_BASE_URL is not configured")
         return []
 
-    token = _admin_token_cache or _login()
+    token = _admin_token_cache or _login(request_logs=request_logs)
     if not token:
         return []
 
@@ -178,13 +179,14 @@ def get_companies() -> list[dict]:
         method="GET",
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
+        request_logs=request_logs,
     )
     
     if payload is None:
         # Try refreshing token once on error
         print("Moving CRM companies: request failed, refreshing token")
         _admin_token_cache = None
-        refreshed = _login()
+        refreshed = _login(request_logs=request_logs)
         if not refreshed:
             return []
         payload = request(
@@ -192,6 +194,7 @@ def get_companies() -> list[dict]:
             method="GET",
             headers={"Authorization": f"Bearer {refreshed}"},
             timeout=10,
+            request_logs=request_logs,
         )
     
     if not isinstance(payload, (dict, list)):
@@ -246,14 +249,18 @@ def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
         return False
 
 
-def patch_lead(lead_id: str, payload: dict) -> bool:
+def patch_lead(
+    lead_id: str,
+    payload: dict,
+    request_logs: list[dict] | None = None,
+) -> bool:
     """Patch a lead by CRM lead id. Returns True on success."""
     global _admin_token_cache
 
     if not _BASE_URL or not lead_id:
         return False
 
-    token = _admin_token_cache or _login()
+    token = _admin_token_cache or _login(request_logs=request_logs)
     if not token:
         return False
 
@@ -269,16 +276,18 @@ def patch_lead(lead_id: str, payload: dict) -> bool:
             "Authorization": f"Bearer {token}",
         },
         timeout=20,
+        request_logs=request_logs,
     )
     if resp is not None:
         return True
 
     # Refresh token and retry once.
     _admin_token_cache = None
-    refreshed = _login()
+    refreshed = _login(request_logs=request_logs)
     if not refreshed:
         return False
 
+    body = json.dumps(payload).encode("utf-8")
     resp = request(
         url,
         method="PATCH",
@@ -288,6 +297,7 @@ def patch_lead(lead_id: str, payload: dict) -> bool:
             "Authorization": f"Bearer {refreshed}",
         },
         timeout=20,
+        request_logs=request_logs,
     )
     return resp is not None
 

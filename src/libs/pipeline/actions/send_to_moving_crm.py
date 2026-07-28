@@ -7,6 +7,7 @@ import urllib.error
 from datetime import datetime, timezone
 
 from pipeline.actions.smartmoving import _clean_phone
+from request_trace import append_request_log
 
 _CRM_BASE_URL = os.environ.get("MOVING_CRM_API_BASE_URL", "").rstrip("/")
 _CRM_URL = f"{_CRM_BASE_URL}/api/leads" if _CRM_BASE_URL else ""
@@ -34,7 +35,10 @@ def _normalize_status(value: str) -> str:
     return ""
 
 
-def send_to_moving_crm(data: dict) -> dict:
+def send_to_moving_crm(
+    data: dict,
+    request_logs: list[dict] | None = None,
+) -> dict:
     """Send lead to Moving CRM after SmartMoving creation."""
     if not _CRM_URL:
         print("Moving CRM: MOVING_CRM_API_BASE_URL is not configured")
@@ -103,15 +107,18 @@ def send_to_moving_crm(data: dict) -> dict:
         "facebook_user_id": facebook_user_id,
         "messenger_link": f"https://business.facebook.com/latest/{facebook_user_id}" if facebook_user_id else "",
     }
+    if status in {"booked", "scheduled", "completed"} and data.get("booked_move_date"):
+        crm_payload["booked_move_date"] = data["booked_move_date"]
 
     body = json.dumps(crm_payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "X-Api-Secret": _CRM_API_SECRET,
+    }
     req = urllib.request.Request(
         _CRM_URL,
         data=body,
-        headers={
-            "Content-Type": "application/json",
-            "X-Api-Secret": _CRM_API_SECRET,
-        },
+        headers=headers,
         method="POST",
     )
     try:
@@ -119,14 +126,41 @@ def send_to_moving_crm(data: dict) -> dict:
             response_status = str(resp.status)
             response_text = resp.read().decode("utf-8", "ignore")
             data["moving_crm_ok"] = True
+            append_request_log(
+                request_logs,
+                method="POST",
+                url=_CRM_URL,
+                headers=headers,
+                payload=body,
+                status_code=resp.status,
+                response_body=response_text,
+            )
     except urllib.error.HTTPError as exc:
         response_status = str(exc.code)
         response_text = exc.read().decode("utf-8", "ignore")
         data["moving_crm_ok"] = False
+        append_request_log(
+            request_logs,
+            method="POST",
+            url=_CRM_URL,
+            headers=headers,
+            payload=body,
+            status_code=exc.code,
+            response_body=response_text,
+        )
     except Exception as exc:
         response_status = "exception"
         response_text = repr(exc)
         data["moving_crm_ok"] = False
+        append_request_log(
+            request_logs,
+            method="POST",
+            url=_CRM_URL,
+            headers=headers,
+            payload=body,
+            status_code=0,
+            response_body={"error": response_text},
+        )
 
     print(f"smartmoving_id={smartmoving_id} | api_secret={_CRM_API_SECRET} | response_status={response_status} | response={response_text}")
 

@@ -15,6 +15,23 @@ from services.smartmoving_service import handle_followup_created, handle_followu
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 APP_SECRET = os.environ.get("APP_SECRET", "")
 
+def _log_meta_event(event: dict, context) -> None:
+    """Log the complete Meta event plus Lambda invocation context."""
+    context_data = dict(vars(context)) if context is not None else None
+
+    print(
+        "META_WEBHOOK_EVENT "
+        + json.dumps(
+            {
+                "event": event,
+                "lambda_context": context_data,
+                "lambda_context_repr": repr(context),
+            },
+            ensure_ascii=False,
+            default=str,
+        )
+    )
+
 
 def _verify_meta_signature(event: dict, raw_bytes: bytes) -> bool:
     """Verify Meta's X-Hub-Signature-256 (HMAC-SHA256 of the raw body with APP_SECRET)."""
@@ -72,6 +89,8 @@ def lambda_handler(event, context):
             if event_type == "opportunity-changed":
                 handle_opportunity_changed(body)
                 return {"statusCode": 200, "body": "OK"}
+
+            _log_meta_event(event, context)
 
             # Meta (Facebook/Instagram) events must carry a valid app-signed signature.
             if not _verify_meta_signature(event, raw_bytes):

@@ -82,6 +82,26 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
+    def test_meta_event_log_includes_complete_event_and_context(self, capsys):
+        event = _signed_post({"object": "page", "entry": [{"id": "p1"}]})
+        context = MagicMock()
+        context.aws_request_id = "request-123"
+        context.invoked_function_arn = "arn:aws:lambda:us-east-1:123:function:test"
+        context.function_name = "test"
+        context.function_version = "$LATEST"
+        context.memory_limit_in_mb = "256"
+        context.log_group_name = "/aws/lambda/test"
+        context.log_stream_name = "stream-123"
+        context.get_remaining_time_in_millis.return_value = 25000
+
+        assert self.handler(event, context)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "META_WEBHOOK_EVENT" in logs
+        assert '"aws_request_id": "request-123"' in logs
+        assert '"body": "{\\"object\\": \\"page\\"' in logs
+        assert event["headers"]["x-hub-signature-256"] in logs
+
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"] = {"user-agent": "Meta-Test"}
@@ -457,6 +477,29 @@ class TestLeadPipeline:
         data = {"leadgen_id": "L1"}
         result = run_pipeline("nonexistent", data)
         assert result is data
+
+    @patch("pipeline.actions.send_to_moving_crm.urllib.request.urlopen")
+    def test_booked_lead_post_includes_booked_move_date(self, mock_urlopen):
+        response = MagicMock()
+        response.status = 201
+        response.read.return_value = b'{"id":"crm-1"}'
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        import pipeline.actions.send_to_moving_crm as moving_crm_action
+
+        with patch.object(moving_crm_action, "_CRM_URL", "https://crm.example/api/leads"):
+            moving_crm_action.send_to_moving_crm(
+                {
+                    "full_name": "Yaritza Grant",
+                    "status": "booked",
+                    "booked_move_date": "2026-07-27",
+                }
+            )
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        assert payload["status"] == "booked"
+        assert payload["booked_move_date"] == "2026-07-27"
 
     @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
     @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
@@ -1305,7 +1348,7 @@ class TestOpportunityChanged:
 
     @pytest.fixture(autouse=True)
     def _env(self):
-        with patch.dict(os.environ, ENV_VARS):
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod", "REP_ASSIGNMENT_DRY_RUN": "false"}):
             yield
 
     def _event(self):
@@ -1324,6 +1367,117 @@ class TestOpportunityChanged:
         payload["opportunity-status"] = status
         event["body"] = json.dumps(payload)
         return event
+
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_patch_payload_contains_prior_request_logs(self, mock_opp, mock_lead, mock_patch):
+        request_logs = [
+            {
+                "request": {
+                    "method": "GET",
+                    "url": "https://api.example/opportunity",
+                    "headers": {"x-api-key": "[REDACTED]"},
+                    "payload": {},
+                },
+                "response": {"status_code": 200, "body": {"id": self._OPP_ID}},
+            }
+        ]
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 4,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, request_logs=request_logs)
+        payload = mock_patch.call_args.args[1]
+        assert payload["logs"] == request_logs
+        assert mock_patch.call_args.kwargs["request_logs"] is request_logs
+
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_booked_status_uses_first_booking_activity_in_list(
+        self, mock_opp, mock_lead, mock_patch
+    ):
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 4,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+        activities = [
+            {
+                "description": "Move size changed from '2 Bedrooms' to '2 Bedroom House'.",
+                "createdAtUtc": "2026-07-27T23:51:50.1592065+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-27T00:53:59.0333164+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-20T12:00:00+00:00",
+            },
+        ]
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, audit_activities=activities)
+        payload = mock_patch.call_args.args[1]
+        assert payload["jobs"][0]["booked_move_date"] == "2026-07-26"
+
+    @pytest.mark.parametrize("status", [10, 11, "scheduled"])
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_later_statuses_keep_first_booking_activity_date(
+        self, mock_opp, mock_lead, mock_patch, status
+    ):
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": status,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+        activities = [
+            {
+                "description": "Opportunity completed.",
+                "createdAtUtc": "2026-07-28T12:00:00+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-27T20:08:27.3814086+00:00",
+            },
+        ]
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, audit_activities=activities)
+        payload = mock_patch.call_args.args[1]
+        assert payload["jobs"][0]["booked_move_date"] == "2026-07-27"
+
+    def test_request_logs_redact_credentials(self):
+        from request_trace import append_request_log
+
+        logs = []
+        append_request_log(
+            logs,
+            method="POST",
+            url="https://api.example/login",
+            headers={"Authorization": "Bearer secret", "X-Api-Key": "secret"},
+            payload={"email": "admin@example.com", "password": "secret"},
+            status_code=200,
+            response_body={"accessToken": "secret"},
+        )
+
+        assert logs[0]["request"]["headers"]["Authorization"] == "[REDACTED]"
+        assert logs[0]["request"]["headers"]["X-Api-Key"] == "[REDACTED]"
+        assert logs[0]["request"]["payload"]["password"] == "[REDACTED]"
+        assert logs[0]["response"]["body"]["accessToken"] == "[REDACTED]"
 
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_user_id_by_name")
@@ -1373,6 +1527,38 @@ class TestOpportunityChanged:
         assert resp["statusCode"] == 200
         mock_sms.assert_called_once()
         assert "Sean Edson" in mock_sms.call_args[0][2]
+
+    @patch("services.smartmoving_service.try_claim_dedupe_key")
+    @patch("services.smartmoving_service.send_sms")
+    @patch("services.smartmoving_service.get_user_id_by_name")
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_sales_rep")
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_dev_dry_run_builds_but_does_not_send_or_claim_dedupe(
+        self, mock_audit, mock_rep, mock_lead, mock_user, mock_sms, mock_dedupe, capsys
+    ):
+        mock_audit.return_value = [
+            {"description": "Sales person changed to Eli Jones.", "activityType": 1}
+        ]
+        mock_user.return_value = "user-123"
+        mock_rep.return_value = "645873"
+        mock_lead.return_value = {
+            "full_name": "John Smith",
+            "phone": "2403586309",
+            "company_name": "Gorilla Haulers",
+        }
+
+        from handler import lambda_handler
+        with patch.dict(os.environ, {"REP_ASSIGNMENT_DRY_RUN": "true"}):
+            resp = lambda_handler(self._event(), None)
+
+        assert resp["statusCode"] == 200
+        mock_sms.assert_not_called()
+        mock_dedupe.assert_not_called()
+        output = capsys.readouterr().out
+        assert "DRY RUN: intro SMS not sent" in output
+        assert "+12403586309" in output
+        assert "Eli Jones" in output
 
     @patch("services.smartmoving_service.send_sms")
     @patch("services.smartmoving_service.get_audit_activity")
@@ -1473,7 +1659,13 @@ class TestOpportunityChanged:
     @patch("services.smartmoving_service.get_opportunity")
     @patch("services.smartmoving_service.get_audit_activity")
     def test_creates_missing_lead_when_booked(self, mock_audit, mock_opp, mock_lead, mock_ensure):
-        mock_audit.return_value = [{"description": "Opportunity booked.", "activityType": 1}]
+        mock_audit.return_value = [
+            {
+                "description": "Opportunity changed to Booked.",
+                "activityType": 1,
+                "createdAtUtc": "2026-07-27T20:08:27.782911Z",
+            }
+        ]
         mock_opp.return_value = {
             "id": self._OPP_ID,
             "status": 4,
@@ -1483,7 +1675,13 @@ class TestOpportunityChanged:
         from handler import lambda_handler
         resp = lambda_handler(self._event_with_status(4), None)
         assert resp["statusCode"] == 200
-        mock_ensure.assert_called_once_with(self._OPP_ID, "booked")
+        mock_ensure.assert_called_once_with(
+            self._OPP_ID,
+            "booked",
+            opportunity=mock_opp.return_value,
+            booked_move_date="2026-07-27",
+            request_logs=mock_audit.call_args.kwargs["request_logs"],
+        )
 
     @patch("services.smartmoving_service._ensure_lead_exists")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
@@ -1500,7 +1698,13 @@ class TestOpportunityChanged:
         from handler import lambda_handler
         resp = lambda_handler(self._event_with_status(10), None)
         assert resp["statusCode"] == 200
-        mock_ensure.assert_called_once_with(self._OPP_ID, "completed")
+        mock_ensure.assert_called_once_with(
+            self._OPP_ID,
+            "completed",
+            opportunity=mock_opp.return_value,
+            booked_move_date=None,
+            request_logs=mock_audit.call_args.kwargs["request_logs"],
+        )
 
     @patch("services.smartmoving_service._ensure_lead_exists")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")

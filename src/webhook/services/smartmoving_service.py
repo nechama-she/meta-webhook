@@ -1,6 +1,7 @@
 """Handle SmartMoving webhook events."""
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -44,6 +45,7 @@ _SMARTMOVING_STATUS_TO_CRM = {
     30: "lost",
     50: "lost",
 }
+_BOOKED_DATE_STATUSES = {"booked", "scheduled", "completed"}
 
 
 def _clean_phone(phone: str) -> str:
@@ -86,6 +88,9 @@ def _parse_priority(lead_status) -> int | None:
 
 
 def _map_opportunity_status(opportunity_status) -> str:
+    text_status = str(opportunity_status or "").strip().lower()
+    if text_status in _BOOKED_DATE_STATUSES:
+        return text_status
     try:
         code = int(opportunity_status)
     except Exception:
@@ -202,6 +207,17 @@ def _audit_created_at_to_eastern_date(activity: dict | None) -> str | None:
     return dt.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
 
 
+def _first_booked_move_date(activities: list | None) -> str | None:
+    """Return the date from the first booking activity in API list order."""
+    for activity in activities or []:
+        if not isinstance(activity, dict):
+            continue
+        description = str(activity.get("description") or "")
+        if _CHANGED_TO_BOOKED_RE.search(description):
+            return _audit_created_at_to_eastern_date(activity)
+    return None
+
+
 def _build_jobs_payload(opportunity: dict, booked_move_date: str | None = None) -> list[dict]:
     opportunity_jobs = opportunity.get("jobs") or []
     jobs = []
@@ -273,10 +289,23 @@ def _build_crm_payload(
     return payload
 
 
-def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None = None) -> bool:
-    opportunity = get_opportunity(opportunity_id, include_full=True)
+def _sync_opportunity_to_crm(
+    opportunity_id: str,
+    booked_move_date: str | None = None,
+    audit_activities: list | None = None,
+    request_logs: list[dict] | None = None,
+) -> bool:
+    opportunity = get_opportunity(
+        opportunity_id,
+        include_full=True,
+        request_logs=request_logs,
+    )
     if not opportunity:
-        _, status_code, error_text = get_opportunity_result(opportunity_id, include_full=True)
+        _, status_code, error_text = get_opportunity_result(
+            opportunity_id,
+            include_full=True,
+            request_logs=request_logs,
+        )
         if status_code != 200 and error_text and "specified opportunity was not found" in error_text.lower():
             print(
                 f"Opportunity {opportunity_id} missing in SmartMoving; deleting lead by smartmoving id in CRM"
@@ -287,12 +316,23 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
         print(f"Could not fetch full opportunity for {opportunity_id}")
         return False
 
+    mapped_status = _map_opportunity_status(opportunity.get("status"))
+    if mapped_status in _BOOKED_DATE_STATUSES:
+        booked_move_date = _first_booked_move_date(audit_activities) or booked_move_date
+    else:
+        booked_move_date = None
+
     existing_lead = get_lead_by_smartmoving_id(opportunity_id)
     if not existing_lead:
-        mapped_status = _map_opportunity_status(opportunity.get("status"))
-        if mapped_status in {"booked", "completed"}:
+        if mapped_status in _BOOKED_DATE_STATUSES:
             print(f"Lead not found for {opportunity_id}; creating from SmartMoving status={mapped_status}")
-            _ensure_lead_exists(opportunity_id, mapped_status)
+            _ensure_lead_exists(
+                opportunity_id,
+                mapped_status,
+                opportunity=opportunity,
+                booked_move_date=booked_move_date,
+                request_logs=request_logs,
+            )
             existing_lead = get_lead_by_smartmoving_id(opportunity_id)
         else:
             print(f"Lead not found for {opportunity_id}; skipping CRM sync (status={mapped_status!r})")
@@ -313,11 +353,12 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
         existing_lead,
         booked_move_date=booked_move_date,
     )
+    payload["logs"] = request_logs or []
     print(
         "Opportunity patch payload "
         f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(payload, ensure_ascii=False, default=str)}"
     )
-    ok = patch_lead(crm_lead_id, payload)
+    ok = patch_lead(crm_lead_id, payload, request_logs=request_logs)
     if not ok and "assigned_to_name" in payload:
         retry_payload = dict(payload)
         retry_payload.pop("assigned_to_name", None)
@@ -325,7 +366,7 @@ def _sync_opportunity_to_crm(opportunity_id: str, booked_move_date: str | None =
             "Opportunity patch retry payload "
             f"for {opportunity_id} -> lead_id={crm_lead_id}: {json.dumps(retry_payload, ensure_ascii=False, default=str)}"
         )
-        ok = patch_lead(crm_lead_id, retry_payload)
+        ok = patch_lead(crm_lead_id, retry_payload, request_logs=request_logs)
 
     if ok and booked_move_date:
         docs_ok = sync_smartmoving_documents(opportunity_id)
@@ -393,6 +434,15 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     # Different reps can each send their own intro once.
     rep_key = str(aircall_number_id).strip()
     dedupe_key = f"SMS_INTRO:{rep_key}:{phone}"
+
+    if os.environ.get("REP_ASSIGNMENT_DRY_RUN", "false").strip().lower() == "true":
+        print(
+            "DRY RUN: intro SMS not sent and dedupe not claimed: "
+            f"rep={rep_name}, aircall_number_id={aircall_number_id}, phone={phone}, "
+            f"key={dedupe_key}, message={message!r}"
+        )
+        return
+
     is_first_intro_for_phone = try_claim_dedupe_key(dedupe_key)
     already_sent_intro_sms = not is_first_intro_for_phone
     print(
@@ -413,9 +463,15 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     send_sms(int(aircall_number_id), phone, message)
 
 
-def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
-    """Fetch opportunity from SmartMoving and create the lead via Moving CRM API."""
-    opp = get_opportunity(opportunity_id)
+def _ensure_lead_exists(
+    opportunity_id: str,
+    status: str,
+    opportunity: dict | None = None,
+    booked_move_date: str | None = None,
+    request_logs: list[dict] | None = None,
+) -> None:
+    """Create a CRM lead, reusing a previously fetched SmartMoving opportunity."""
+    opp = opportunity or get_opportunity(opportunity_id, request_logs=request_logs)
     if not opp:
         print(f"Could not fetch opportunity {opportunity_id}; lead not created")
         return
@@ -427,7 +483,7 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
     branch_id = str(branch.get("id") or "").strip()
     sm_branch_name = branch.get("name", "")
     company_name = sm_branch_name
-    companies = get_companies()
+    companies = get_companies(request_logs=request_logs)
     for c in companies:
         cid = str(c.get("smartmoving_branch_id") or c.get("samrtmoving_branch_id") or "").strip()
         if cid and cid == branch_id:
@@ -446,7 +502,7 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
     except Exception:
         move_date = ""
 
-    send_to_moving_crm({
+    lead_data = {
         "full_name": full_name,
         "phone_number": phone,
         "email": email,
@@ -458,7 +514,11 @@ def _ensure_lead_exists(opportunity_id: str, status: str) -> None:
         "move_date": move_date,
         "status": status,
         "source": "SmartMoving",
-    })
+    }
+    if status in _BOOKED_DATE_STATUSES and booked_move_date:
+        lead_data["booked_move_date"] = booked_move_date
+
+    send_to_moving_crm(lead_data, request_logs=request_logs)
 
 
 def handle_followup_created(body: dict) -> None:
@@ -500,14 +560,17 @@ def handle_opportunity_changed(body: dict) -> None:
         print("Missing opportunity-id in opportunity-changed event")
         return
 
-    activities = get_audit_activity(opportunity_id)
+    request_logs: list[dict] = []
+    activities = get_audit_activity(opportunity_id, request_logs=request_logs)
     print(f"Audit activity response for {opportunity_id}: {activities!r}")
     latest = activities[0] if activities else {}
     description = latest.get("description", "") if isinstance(latest, dict) else ""
-    status_changed_to_booked = bool(_CHANGED_TO_BOOKED_RE.search(description))
-    booked_move_date = _audit_created_at_to_eastern_date(latest) if status_changed_to_booked else None
 
-    _sync_opportunity_to_crm(opportunity_id, booked_move_date=booked_move_date)
+    _sync_opportunity_to_crm(
+        opportunity_id,
+        audit_activities=activities,
+        request_logs=request_logs,
+    )
 
     if not activities:
         print(f"No audit activity for {opportunity_id}")
