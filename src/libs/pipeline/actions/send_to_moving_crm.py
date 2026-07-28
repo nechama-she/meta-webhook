@@ -107,7 +107,7 @@ def send_to_moving_crm(
         "facebook_user_id": facebook_user_id,
         "messenger_link": f"https://business.facebook.com/latest/{facebook_user_id}" if facebook_user_id else "",
     }
-    if status == "booked" and data.get("booked_move_date"):
+    if status in {"booked", "scheduled", "completed"} and data.get("booked_move_date"):
         crm_payload["booked_move_date"] = data["booked_move_date"]
 
     body = json.dumps(crm_payload).encode("utf-8")

@@ -1397,6 +1397,69 @@ class TestOpportunityChanged:
         assert payload["logs"] == request_logs
         assert mock_patch.call_args.kwargs["request_logs"] is request_logs
 
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_booked_status_uses_first_booking_activity_in_list(
+        self, mock_opp, mock_lead, mock_patch
+    ):
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 4,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+        activities = [
+            {
+                "description": "Move size changed from '2 Bedrooms' to '2 Bedroom House'.",
+                "createdAtUtc": "2026-07-27T23:51:50.1592065+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-27T00:53:59.0333164+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-20T12:00:00+00:00",
+            },
+        ]
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, audit_activities=activities)
+        payload = mock_patch.call_args.args[1]
+        assert payload["jobs"][0]["booked_move_date"] == "2026-07-26"
+
+    @pytest.mark.parametrize("status", [10, 11, "scheduled"])
+    @patch("services.smartmoving_service.patch_lead", return_value=True)
+    @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
+    def test_later_statuses_keep_first_booking_activity_date(
+        self, mock_opp, mock_lead, mock_patch, status
+    ):
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": status,
+            "jobs": [{"id": "job-1"}],
+        }
+        mock_lead.return_value = {"id": "crm-1"}
+        activities = [
+            {
+                "description": "Opportunity completed.",
+                "createdAtUtc": "2026-07-28T12:00:00+00:00",
+            },
+            {
+                "description": "Status changed to Booked from Opportunity.",
+                "createdAtUtc": "2026-07-27T20:08:27.3814086+00:00",
+            },
+        ]
+
+        from services.smartmoving_service import _sync_opportunity_to_crm
+
+        assert _sync_opportunity_to_crm(self._OPP_ID, audit_activities=activities)
+        payload = mock_patch.call_args.args[1]
+        assert payload["jobs"][0]["booked_move_date"] == "2026-07-27"
+
     def test_request_logs_redact_credentials(self):
         from request_trace import append_request_log
 
