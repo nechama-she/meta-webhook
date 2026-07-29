@@ -117,7 +117,7 @@ def send_messenger_note(data: dict) -> dict:
     else:
         print(f"SmartMoving note: failed to post to {smartmoving_id}")
 
-    if direction == "user":
+    if direction == "user" and not data.get("skip_followup", False):
         _sync_customer_message_followup(
             smartmoving_id,
             context.get("assigned_to_id"),

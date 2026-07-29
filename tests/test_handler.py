@@ -1325,6 +1325,29 @@ class TestPendingNotes:
         mock_add.assert_called_once()
         mock_get.assert_not_called()
 
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_matched_pattern_message_does_not_change_followups(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        send_messenger_note(
+            {
+                "sender_id": "u1",
+                "text": "move size: storage",
+                "direction": "user",
+                "skip_followup": True,
+            }
+        )
+
+        mock_add.assert_called_once()
+        mock_get.assert_not_called()
+
     @patch("services.aircall_service.save_pending_note")
     @patch("services.aircall_service.get_smartmoving_id_by_phone", return_value=None)
     @patch("services.aircall_service.add_note")
