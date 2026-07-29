@@ -61,6 +61,35 @@ def get_smartmoving_id(facebook_user_id: str) -> str | None:
         return None
 
 
+def get_smartmoving_followup_context(facebook_user_id: str) -> dict | None:
+    """Return the opportunity ID and Moving CRM assignee ID for a follow-up."""
+    try:
+        conn = _get_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT smartmoving_id, assigned_to
+                FROM leads
+                WHERE facebook_user_id = %s
+                LIMIT 1
+                """,
+                (facebook_user_id,),
+            )
+            row = cur.fetchone()
+            if not row or not row[0]:
+                return None
+
+            return {
+                "smartmoving_id": str(row[0]),
+                "assigned_to_id": str(row[1]) if row[1] else None,
+            }
+    except Exception as exc:
+        print(f"RDS SmartMoving follow-up context lookup error: {repr(exc)}")
+        global _conn
+        _conn = None
+        return None
+
+
 def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
     """Return True if a lead with this leadgen_id already exists in RDS."""
     try:
