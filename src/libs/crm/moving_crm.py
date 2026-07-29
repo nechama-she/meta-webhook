@@ -213,6 +213,44 @@ def get_companies(request_logs: list[dict] | None = None) -> list[dict]:
     return data
 
 
+def get_users() -> list[dict] | None:
+    """Return Moving CRM users for SmartMoving representative ID mapping."""
+    global _admin_token_cache
+
+    if not _BASE_URL:
+        print("Moving CRM users: MOVING_CRM_API_BASE_URL is not configured")
+        return None
+
+    token = _admin_token_cache or _login()
+    if not token:
+        return None
+
+    url = f"{_BASE_URL.rstrip('/')}/api/users"
+    payload = request(
+        url,
+        method="GET",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    if payload is None:
+        _admin_token_cache = None
+        refreshed = _login()
+        if not refreshed:
+            return None
+        payload = request(
+            url,
+            method="GET",
+            headers={"Authorization": f"Bearer {refreshed}"},
+            timeout=10,
+        )
+
+    data = payload.get("data") if isinstance(payload, dict) and "data" in payload else payload
+    if not isinstance(data, list):
+        print(f"Moving CRM users: data is not list: {type(data)}")
+        return None
+    return data
+
+
 def lead_exists_by_leadgen_id(leadgen_id: str) -> bool:
     """Return True if a lead with this leadgen_id exists in Moving CRM."""
     global _admin_token_cache

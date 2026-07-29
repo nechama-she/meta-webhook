@@ -78,6 +78,52 @@ def get_followups(opportunity_id: str) -> list | None:
     return None
 
 
+def create_followup(opportunity_id: str, payload: dict) -> dict | str | None:
+    """Create a SmartMoving opportunity follow-up."""
+    url = f"{_BASE_URL}/{opportunity_id}/followups"
+    return _write_followup("POST", url, payload)
+
+
+def update_followup(
+    opportunity_id: str,
+    followup_id: str,
+    payload: dict,
+) -> dict | str | None:
+    """Update an existing SmartMoving opportunity follow-up."""
+    url = f"{_BASE_URL}/{opportunity_id}/followups/{followup_id}"
+    return _write_followup("PUT", url, payload)
+
+
+def _write_followup(method: str, url: str, payload: dict) -> dict | str | None:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json-patch+json",
+            "Cache-Control": "no-cache",
+            "x-api-key": _API_KEY,
+        },
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            response_text = resp.read().decode("utf-8", "ignore")
+            print(f"SmartMoving follow-up {method}: {resp.status} {response_text!r}")
+            if not response_text:
+                return {}
+            try:
+                return json.loads(response_text)
+            except (json.JSONDecodeError, ValueError):
+                return response_text
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", "ignore")
+        print(f"SmartMoving follow-up {method} HTTP error: {exc.code} {error_body}")
+    except Exception as exc:
+        print(f"SmartMoving follow-up {method} error: {repr(exc)}")
+    return None
+
+
 def get_opportunity(
     opportunity_id: str,
     include_full: bool = False,
