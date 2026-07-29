@@ -149,11 +149,21 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     # 1b. Cache sender contact info for leadgen lookup
     _cache_sender_info(sender_id, text)
 
+    # Resolve the canned response once so matching messages can skip follow-ups.
+    pattern_text = _pattern_reply(text, page_id)
+
     # 1c. Run messenger_message pipeline (SmartMoving note, etc.)
-    run_pipeline("messenger_message", {"sender_id": sender_id, "text": text, "direction": "user"})
+    run_pipeline(
+        "messenger_message",
+        {
+            "sender_id": sender_id,
+            "text": text,
+            "direction": "user",
+            "skip_followup": bool(pattern_text),
+        },
+    )
 
     # 2. Pattern-based replies
-    pattern_text = _pattern_reply(text, page_id)
     if pattern_text:
         print(f"Step 2: Pattern match – sending to {sender_id}")
         if send_messenger_message(sender_id, pattern_text, page_id):
