@@ -1150,8 +1150,36 @@ class TestPendingNotes:
         with patch.dict(os.environ, ENV_VARS):
             yield
 
+    @patch("db.rds_client._get_connection")
+    def test_followup_context_returns_empty_assignment_for_unassigned_lead(self, mock_connection):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("OPP-1", None)
+        mock_connection.return_value.cursor.return_value.__enter__.return_value = cursor
+
+        from db.rds_client import get_smartmoving_followup_context
+
+        assert get_smartmoving_followup_context("meta-user-1") == {
+            "smartmoving_id": "OPP-1",
+            "assigned_to_id": None,
+        }
+        assert cursor.execute.call_count == 1
+
+    @patch("db.rds_client._get_connection")
+    def test_followup_context_keeps_current_lead_assignment(self, mock_connection):
+        cursor = MagicMock()
+        cursor.fetchone.return_value = ("OPP-1", "ASSIGNEE-1")
+        mock_connection.return_value.cursor.return_value.__enter__.return_value = cursor
+
+        from db.rds_client import get_smartmoving_followup_context
+
+        assert get_smartmoving_followup_context("meta-user-1") == {
+            "smartmoving_id": "OPP-1",
+            "assigned_to_id": "ASSIGNEE-1",
+        }
+        assert cursor.execute.call_count == 1
+
     @patch("pipeline.actions.smartmoving_note.save_pending_note")
-    @patch("pipeline.actions.smartmoving_note.get_smartmoving_id", return_value=None)
+    @patch("pipeline.actions.smartmoving_note.get_smartmoving_followup_context", return_value=None)
     def test_messenger_note_saves_pending_when_no_lead(self, mock_rds, mock_save):
         from pipeline.actions.smartmoving_note import send_messenger_note
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
@@ -1160,16 +1188,165 @@ class TestPendingNotes:
             source="messenger", lookup_key="u1", note="messenger (customer): hello"
         )
 
+    @patch(
+        "pipeline.actions.smartmoving_note.get_users",
+        return_value=[
+            {
+                "id": "USER-1",
+                "role": "sales_rep",
+                "smartmoving_rep_id": "SM-USER-1",
+            }
+        ],
+    )
+    @patch("pipeline.actions.smartmoving_note.create_followup", return_value={"id": "F-1"})
+    @patch("pipeline.actions.smartmoving_note.get_followups", return_value=[])
+    @patch("pipeline.actions.smartmoving_note._today_at_eight_eastern", return_value="2026-07-29T08:00:00")
     @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
     @patch("pipeline.actions.smartmoving_note.save_pending_note")
-    @patch("pipeline.actions.smartmoving_note.get_smartmoving_id", return_value="OPP-1")
-    def test_messenger_note_posts_when_lead_exists(self, mock_rds, mock_save, mock_add):
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_messenger_note_posts_and_creates_followup_when_none_exists(
+        self, mock_rds, mock_save, mock_add, mock_due, mock_get, mock_create, mock_users
+    ):
         from pipeline.actions.smartmoving_note import send_messenger_note
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
         result = send_messenger_note(data)
         mock_add.assert_called_once_with("OPP-1", "messenger (customer): hello")
+        mock_get.assert_called_once_with("OPP-1")
+        mock_create.assert_called_once_with(
+            "OPP-1",
+            {
+                "type": 2,
+                "title": "messenger",
+                "assignedToId": "SM-USER-1",
+                "dueDateTime": "2026-07-29T08:00:00",
+                "notes": "hello",
+            },
+        )
         mock_save.assert_not_called()
         assert result["smartmoving_id"] == "OPP-1"
+
+    @patch(
+        "pipeline.actions.smartmoving_note.get_users",
+        return_value=[
+            {
+                "id": "ADMIN-1",
+                "role": "admin",
+                "smartmoving_rep_id": "SM-ADMIN-1",
+            }
+        ],
+    )
+    def test_unassigned_lead_uses_admin_smartmoving_rep_id(self, mock_users):
+        from pipeline.actions.smartmoving_note import _resolve_smartmoving_assignee
+
+        assert _resolve_smartmoving_assignee(None) == "SM-ADMIN-1"
+
+    @patch(
+        "pipeline.actions.smartmoving_note.get_users",
+        return_value=[
+            {
+                "id": "USER-1",
+                "role": "sales_rep",
+                "smartmoving_rep_id": "SM-USER-1",
+            },
+            {
+                "id": "ADMIN-1",
+                "role": "admin",
+                "smartmoving_rep_id": "SM-ADMIN-1",
+            },
+        ],
+    )
+    def test_assignment_maps_moving_crm_id_to_smartmoving_rep_id(self, mock_users):
+        from pipeline.actions.smartmoving_note import _resolve_smartmoving_assignee
+
+        assert _resolve_smartmoving_assignee("USER-1") == "SM-USER-1"
+
+    @patch("pipeline.actions.smartmoving_note.update_followup", return_value={})
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note._today_at_eight_eastern", return_value="2026-07-29T08:00:00")
+    def test_existing_followup_preserves_fields_and_prepends_message(
+        self, mock_due, mock_get, mock_update
+    ):
+        mock_get.return_value = [
+            {
+                "id": "F-1",
+                "title": "p1",
+                "type": 2,
+                "assignedToId": "EXISTING-USER",
+                "notes": "older message",
+            }
+        ]
+        from pipeline.actions.smartmoving_note import _sync_customer_message_followup
+
+        _sync_customer_message_followup("OPP-1", "DB-USER", "new message")
+
+        mock_update.assert_called_once_with(
+            "OPP-1",
+            "F-1",
+            {
+                "title": "p1",
+                "type": 2,
+                "assignedToId": "EXISTING-USER",
+                "dueDateTime": "2026-07-29T08:00:00",
+                "notes": "new message\nolder message",
+            },
+        )
+
+    @patch("pipeline.actions.smartmoving_note.create_followup")
+    @patch("pipeline.actions.smartmoving_note.update_followup")
+    @patch("pipeline.actions.smartmoving_note.get_followups", return_value=None)
+    def test_followup_lookup_failure_does_not_create_or_update(
+        self, mock_get, mock_update, mock_create
+    ):
+        from pipeline.actions.smartmoving_note import _sync_customer_message_followup
+
+        _sync_customer_message_followup("OPP-1", "USER-1", "hello")
+
+        mock_update.assert_not_called()
+        mock_create.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_outbound_sales_message_does_not_change_followups(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        send_messenger_note(
+            {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
+        )
+
+        mock_add.assert_called_once()
+        mock_get.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_matched_pattern_message_does_not_change_followups(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        send_messenger_note(
+            {
+                "sender_id": "u1",
+                "text": "move size: storage",
+                "direction": "user",
+                "skip_followup": True,
+            }
+        )
+
+        mock_add.assert_called_once()
+        mock_get.assert_not_called()
 
     @patch("services.aircall_service.save_pending_note")
     @patch("services.aircall_service.get_smartmoving_id_by_phone", return_value=None)
