@@ -82,7 +82,7 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
-    def test_meta_event_log_includes_complete_event_and_context(self, capsys):
+    def test_webhook_event_log_includes_complete_event_and_context(self, capsys):
         event = _signed_post({"object": "page", "entry": [{"id": "p1"}]})
         context = MagicMock()
         context.aws_request_id = "request-123"
@@ -97,10 +97,31 @@ class TestLambdaHandler:
         assert self.handler(event, context)["statusCode"] == 200
 
         logs = capsys.readouterr().out
-        assert "META_WEBHOOK_EVENT" in logs
+        assert "WEBHOOK_EVENT" in logs
         assert '"aws_request_id": "request-123"' in logs
         assert '"body": "{\\"object\\": \\"page\\"' in logs
         assert event["headers"]["x-hub-signature-256"] in logs
+
+    @patch("handler.handle_aircall_message")
+    def test_aircall_event_logs_complete_event_before_dispatch(self, mock_aircall, capsys):
+        body = {
+            "resource": "message",
+            "event": "message.sent",
+            "data": {"id": "aircall-message-1", "body": "hello"},
+        }
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "headers": {"x-aircall-token": "test-token"},
+            "body": json.dumps(body),
+        }
+
+        assert self.handler(event, None)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "WEBHOOK_EVENT" in logs
+        assert '"x-aircall-token": "test-token"' in logs
+        assert '\\"aircall-message-1\\"' in logs
+        mock_aircall.assert_called_once_with(body)
 
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
@@ -1209,7 +1230,7 @@ class TestPendingNotes:
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
         send_messenger_note(data)
         mock_save.assert_called_once_with(
-            source="messenger", lookup_key="u1", note="messenger (customer): hello"
+            source="messenger", lookup_key="u1", note="messenger(customer)(dev): hello"
         )
 
     @patch(
@@ -1238,7 +1259,7 @@ class TestPendingNotes:
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
         with patch.dict(os.environ, {"APP_ENV": "prod"}):
             result = send_messenger_note(data)
-        mock_add.assert_called_once_with("OPP-1", "messenger (customer): hello")
+        mock_add.assert_called_once_with("OPP-1", "messenger(customer)(prod): hello")
         mock_get.assert_called_once_with("OPP-1")
         mock_create.assert_called_once_with(
             "OPP-1",
@@ -1348,7 +1369,7 @@ class TestPendingNotes:
                 {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
             )
 
-        mock_add.assert_called_once()
+        mock_add.assert_called_once_with("OPP-1", "messenger(rep)(prod): sales reply")
         mock_get.assert_not_called()
 
     @patch("pipeline.actions.smartmoving_note.get_followups")
@@ -1373,6 +1394,30 @@ class TestPendingNotes:
             )
 
         mock_add.assert_called_once()
+        mock_get.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_instagram_note_includes_platform_direction_and_environment(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            send_messenger_note(
+                {
+                    "sender_id": "u1",
+                    "text": "hello",
+                    "direction": "user",
+                    "platform": "instagram",
+                }
+            )
+
+        mock_add.assert_called_once_with("OPP-1", "instagram(customer)(dev): hello")
         mock_get.assert_not_called()
 
     @patch("pipeline.actions.smartmoving_note.get_followups")
