@@ -141,13 +141,13 @@ class TestLambdaHandler:
         assert self.handler(event, None)["statusCode"] == 200
         assert "HMAC mismatch" in capsys.readouterr().out
 
-    def test_prod_invalid_signature_is_rejected(self, capsys):
+    def test_prod_invalid_signature_is_logged_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
 
         with patch.dict(os.environ, {"APP_ENV": "prod"}):
-            assert self.handler(event, None)["statusCode"] == 403
-        assert "failed - rejecting" in capsys.readouterr().out
+            assert self.handler(event, None)["statusCode"] == 200
+        assert "Meta signature verification failed" in capsys.readouterr().out
 
     @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
