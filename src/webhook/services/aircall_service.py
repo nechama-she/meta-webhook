@@ -32,6 +32,10 @@ def _normalize_phone(raw: str) -> str:
 
 def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_id: str = "", number_id: int | None = None) -> None:
     """Look up lead by phone in RDS and post SMS as a SmartMoving note."""
+    if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
+        print("SmartMoving SMS note skipped outside prod")
+        return
+
     # Strip +1 to match how phones are stored in leads table
     lookup_phone = re.sub(r"[^\d]", "", phone)
     if lookup_phone.startswith("1") and len(lookup_phone) == 11:
@@ -124,6 +128,9 @@ def handle_aircall_message(body: dict) -> None:
 
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
+        return
+    if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
+        print("Aircall outbound messaging skipped outside prod")
         return
 
     # Trigger outbound call for test phone when text is "call me"
