@@ -1056,11 +1056,23 @@ class TestMessengerService:
     @patch("services.messenger_service.save_message")
     def test_pattern_reply_sends_to_client(self, mock_save, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
-        handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
         # Pattern reply MUST be sent to the client
         mock_send.assert_called_once()
         sent_text = mock_send.call_args[0][1]
         assert "storage unit" in sent_text
+
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.chat_reply", return_value="AI reply")
+    @patch("services.messenger_service.save_message")
+    def test_dev_pattern_reply_is_not_sent(self, mock_save, mock_reply, mock_send):
+        from services.messenger_service import handle_user_message
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
+
+        mock_send.assert_not_called()
 
     @patch("services.messenger_service.send_messenger_message")
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
@@ -1387,7 +1399,8 @@ class TestPendingNotes:
     @patch("services.aircall_service.add_note")
     def test_aircall_note_saves_pending_when_no_lead(self, mock_add, mock_rds, mock_save):
         from services.aircall_service import _post_sms_note
-        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
         mock_add.assert_not_called()
         mock_save.assert_called_once()
         args = mock_save.call_args[1]
@@ -1400,9 +1413,25 @@ class TestPendingNotes:
     @patch("services.aircall_service.add_note", return_value=True)
     def test_aircall_note_posts_when_lead_exists(self, mock_add, mock_rds, mock_save):
         from services.aircall_service import _post_sms_note
-        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
         mock_add.assert_called_once()
         mock_save.assert_not_called()
+
+    @patch("services.aircall_service.save_pending_note")
+    @patch("services.aircall_service.get_smartmoving_id_by_phone")
+    @patch("services.aircall_service.add_note")
+    def test_dev_aircall_message_does_not_write_smartmoving_note(
+        self, mock_add, mock_lookup, mock_pending
+    ):
+        from services.aircall_service import _post_sms_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+
+        mock_lookup.assert_not_called()
+        mock_add.assert_not_called()
+        mock_pending.assert_not_called()
 
     @patch("pending_notes_service.delete_pending_note")
     @patch("pending_notes_service.add_note", return_value=True)
