@@ -1212,7 +1212,8 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
-        result = send_messenger_note(data)
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            result = send_messenger_note(data)
         mock_add.assert_called_once_with("OPP-1", "messenger (customer): hello")
         mock_get.assert_called_once_with("OPP-1")
         mock_create.assert_called_once_with(
@@ -1318,9 +1319,10 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
 
-        send_messenger_note(
-            {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
-        )
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            send_messenger_note(
+                {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
+            )
 
         mock_add.assert_called_once()
         mock_get.assert_not_called()
@@ -1336,14 +1338,34 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
 
-        send_messenger_note(
-            {
-                "sender_id": "u1",
-                "text": "move size: storage",
-                "direction": "user",
-                "skip_followup": True,
-            }
-        )
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            send_messenger_note(
+                {
+                    "sender_id": "u1",
+                    "text": "move size: storage",
+                    "direction": "user",
+                    "skip_followup": True,
+                }
+            )
+
+        mock_add.assert_called_once()
+        mock_get.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_dev_received_message_does_not_change_followups(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            send_messenger_note(
+                {"sender_id": "u1", "text": "customer message", "direction": "user"}
+            )
 
         mock_add.assert_called_once()
         mock_get.assert_not_called()
