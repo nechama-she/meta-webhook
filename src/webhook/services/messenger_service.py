@@ -1,5 +1,6 @@
 """Messenger inbound-message handling and auto-reply logic."""
 
+import os
 import re
 import uuid
 
@@ -112,7 +113,15 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
     )
 
     # Forward outbound message as a note to SmartMoving
-    run_pipeline("messenger_message", {"sender_id": recipient, "text": text, "direction": "sales"})
+    run_pipeline(
+        "messenger_message",
+        {
+            "sender_id": recipient,
+            "text": text,
+            "direction": "sales",
+            "platform": platform,
+        },
+    )
 
 
 def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger") -> None:
@@ -159,17 +168,21 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
             "sender_id": sender_id,
             "text": text,
             "direction": "user",
+            "platform": platform,
             "skip_followup": bool(pattern_text),
         },
     )
 
     # 2. Pattern-based replies
     if pattern_text:
-        print(f"Step 2: Pattern match – sending to {sender_id}")
-        if send_messenger_message(sender_id, pattern_text, page_id):
-            print("Pattern reply sent")
+        if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
+            print(f"Step 2: Pattern reply skipped outside prod for {sender_id}")
         else:
-            print("Pattern reply failed")
+            print(f"Step 2: Pattern match – sending to {sender_id}")
+            if send_messenger_message(sender_id, pattern_text, page_id):
+                print("Pattern reply sent")
+            else:
+                print("Pattern reply failed")
 
     # 3. Call chat API (dry run – save reply but don't send to client)
     print("Step 3: Calling chat API...")

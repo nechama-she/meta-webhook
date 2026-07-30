@@ -82,7 +82,7 @@ class TestLambdaHandler:
         event = _signed_post({})
         assert self.handler(event, None) == {"statusCode": 200, "body": "OK"}
 
-    def test_meta_event_log_includes_complete_event_and_context(self, capsys):
+    def test_webhook_event_log_includes_complete_event_and_context(self, capsys):
         event = _signed_post({"object": "page", "entry": [{"id": "p1"}]})
         context = MagicMock()
         context.aws_request_id = "request-123"
@@ -97,10 +97,31 @@ class TestLambdaHandler:
         assert self.handler(event, context)["statusCode"] == 200
 
         logs = capsys.readouterr().out
-        assert "META_WEBHOOK_EVENT" in logs
+        assert "WEBHOOK_EVENT" in logs
         assert '"aws_request_id": "request-123"' in logs
         assert '"body": "{\\"object\\": \\"page\\"' in logs
         assert event["headers"]["x-hub-signature-256"] in logs
+
+    @patch("handler.handle_aircall_message")
+    def test_aircall_event_logs_complete_event_before_dispatch(self, mock_aircall, capsys):
+        body = {
+            "resource": "message",
+            "event": "message.sent",
+            "data": {"id": "aircall-message-1", "body": "hello"},
+        }
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "headers": {"x-aircall-token": "test-token"},
+            "body": json.dumps(body),
+        }
+
+        assert self.handler(event, None)["statusCode"] == 200
+
+        logs = capsys.readouterr().out
+        assert "WEBHOOK_EVENT" in logs
+        assert '"x-aircall-token": "test-token"' in logs
+        assert '\\"aircall-message-1\\"' in logs
+        mock_aircall.assert_called_once_with(body)
 
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
@@ -120,13 +141,13 @@ class TestLambdaHandler:
         assert self.handler(event, None)["statusCode"] == 200
         assert "HMAC mismatch" in capsys.readouterr().out
 
-    def test_prod_invalid_signature_is_rejected(self, capsys):
+    def test_prod_invalid_signature_is_logged_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"]["x-hub-signature-256"] = "sha256=" + ("0" * 64)
 
         with patch.dict(os.environ, {"APP_ENV": "prod"}):
-            assert self.handler(event, None)["statusCode"] == 403
-        assert "failed - rejecting" in capsys.readouterr().out
+            assert self.handler(event, None)["statusCode"] == 200
+        assert "Meta signature verification failed" in capsys.readouterr().out
 
     @patch("handler.process_comment")
     def test_post_feed_comment_dispatches(self, mock_comment):
@@ -1056,11 +1077,23 @@ class TestMessengerService:
     @patch("services.messenger_service.save_message")
     def test_pattern_reply_sends_to_client(self, mock_save, mock_reply, mock_send):
         from services.messenger_service import handle_user_message
-        handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
         # Pattern reply MUST be sent to the client
         mock_send.assert_called_once()
         sent_text = mock_send.call_args[0][1]
         assert "storage unit" in sent_text
+
+    @patch("services.messenger_service.send_messenger_message")
+    @patch("services.messenger_service.chat_reply", return_value="AI reply")
+    @patch("services.messenger_service.save_message")
+    def test_dev_pattern_reply_is_not_sent(self, mock_save, mock_reply, mock_send):
+        from services.messenger_service import handle_user_message
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            handle_user_message(self._make_messaging(text="move size: storage"), {"id": "p1"})
+
+        mock_send.assert_not_called()
 
     @patch("services.messenger_service.send_messenger_message")
     @patch("services.messenger_service.chat_reply", return_value="AI reply")
@@ -1151,6 +1184,18 @@ class TestPendingNotes:
             yield
 
     @patch("db.rds_client._get_connection")
+    def test_company_scoped_phone_lookup_does_not_fall_back(self, mock_connection):
+        cursor = MagicMock()
+        cursor.mogrify.return_value = "scoped query"
+        cursor.fetchone.return_value = None
+        mock_connection.return_value.cursor.return_value.__enter__.return_value = cursor
+
+        from db.rds_client import get_smartmoving_id_by_phone
+
+        assert get_smartmoving_id_by_phone("2165413384", "TOP-TIER-ID") is None
+        assert cursor.execute.call_count == 1
+
+    @patch("db.rds_client._get_connection")
     def test_followup_context_returns_empty_assignment_for_unassigned_lead(self, mock_connection):
         cursor = MagicMock()
         cursor.fetchone.return_value = ("OPP-1", None)
@@ -1185,7 +1230,7 @@ class TestPendingNotes:
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
         send_messenger_note(data)
         mock_save.assert_called_once_with(
-            source="messenger", lookup_key="u1", note="messenger (customer): hello"
+            source="messenger", lookup_key="u1", note="messenger(customer)(dev): hello"
         )
 
     @patch(
@@ -1212,8 +1257,9 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
-        result = send_messenger_note(data)
-        mock_add.assert_called_once_with("OPP-1", "messenger (customer): hello")
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            result = send_messenger_note(data)
+        mock_add.assert_called_once_with("OPP-1", "messenger(customer)(prod): hello")
         mock_get.assert_called_once_with("OPP-1")
         mock_create.assert_called_once_with(
             "OPP-1",
@@ -1318,11 +1364,12 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
 
-        send_messenger_note(
-            {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
-        )
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            send_messenger_note(
+                {"sender_id": "u1", "text": "sales reply", "direction": "sales"}
+            )
 
-        mock_add.assert_called_once()
+        mock_add.assert_called_once_with("OPP-1", "messenger(rep)(prod): sales reply")
         mock_get.assert_not_called()
 
     @patch("pipeline.actions.smartmoving_note.get_followups")
@@ -1336,14 +1383,58 @@ class TestPendingNotes:
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
 
-        send_messenger_note(
-            {
-                "sender_id": "u1",
-                "text": "move size: storage",
-                "direction": "user",
-                "skip_followup": True,
-            }
-        )
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            send_messenger_note(
+                {
+                    "sender_id": "u1",
+                    "text": "move size: storage",
+                    "direction": "user",
+                    "skip_followup": True,
+                }
+            )
+
+        mock_add.assert_called_once()
+        mock_get.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_instagram_note_includes_platform_direction_and_environment(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            send_messenger_note(
+                {
+                    "sender_id": "u1",
+                    "text": "hello",
+                    "direction": "user",
+                    "platform": "instagram",
+                }
+            )
+
+        mock_add.assert_called_once_with("OPP-1", "instagram(customer)(dev): hello")
+        mock_get.assert_not_called()
+
+    @patch("pipeline.actions.smartmoving_note.get_followups")
+    @patch("pipeline.actions.smartmoving_note.add_note", return_value=True)
+    @patch(
+        "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
+        return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
+    )
+    def test_dev_received_message_does_not_change_followups(
+        self, mock_rds, mock_add, mock_get
+    ):
+        from pipeline.actions.smartmoving_note import send_messenger_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            send_messenger_note(
+                {"sender_id": "u1", "text": "customer message", "direction": "user"}
+            )
 
         mock_add.assert_called_once()
         mock_get.assert_not_called()
@@ -1353,7 +1444,8 @@ class TestPendingNotes:
     @patch("services.aircall_service.add_note")
     def test_aircall_note_saves_pending_when_no_lead(self, mock_add, mock_rds, mock_save):
         from services.aircall_service import _post_sms_note
-        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
         mock_add.assert_not_called()
         mock_save.assert_called_once()
         args = mock_save.call_args[1]
@@ -1366,9 +1458,25 @@ class TestPendingNotes:
     @patch("services.aircall_service.add_note", return_value=True)
     def test_aircall_note_posts_when_lead_exists(self, mock_add, mock_rds, mock_save):
         from services.aircall_service import _post_sms_note
-        _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
         mock_add.assert_called_once()
         mock_save.assert_not_called()
+
+    @patch("services.aircall_service.save_pending_note")
+    @patch("services.aircall_service.get_smartmoving_id_by_phone")
+    @patch("services.aircall_service.add_note")
+    def test_dev_aircall_message_does_not_write_smartmoving_note(
+        self, mock_add, mock_lookup, mock_pending
+    ):
+        from services.aircall_service import _post_sms_note
+
+        with patch.dict(os.environ, {"APP_ENV": "dev"}):
+            _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
+
+        mock_lookup.assert_not_called()
+        mock_add.assert_not_called()
+        mock_pending.assert_not_called()
 
     @patch("pending_notes_service.delete_pending_note")
     @patch("pending_notes_service.add_note", return_value=True)

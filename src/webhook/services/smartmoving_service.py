@@ -435,7 +435,10 @@ def _handle_sales_person_assignment(opportunity_id: str, rep_name: str) -> None:
     rep_key = str(aircall_number_id).strip()
     dedupe_key = f"SMS_INTRO:{rep_key}:{phone}"
 
-    if os.environ.get("REP_ASSIGNMENT_DRY_RUN", "false").strip().lower() == "true":
+    if (
+        os.environ.get("APP_ENV", "dev").strip().lower() != "prod"
+        or os.environ.get("REP_ASSIGNMENT_DRY_RUN", "false").strip().lower() == "true"
+    ):
         print(
             "DRY RUN: intro SMS not sent and dedupe not claimed: "
             f"rep={rep_name}, aircall_number_id={aircall_number_id}, phone={phone}, "

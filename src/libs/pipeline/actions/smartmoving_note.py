@@ -1,5 +1,6 @@
 """Add Messenger/Instagram activity to a SmartMoving opportunity."""
 
+import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -100,7 +101,10 @@ def send_messenger_note(data: dict) -> dict:
         return data
 
     direction = data.get("direction", "user")
-    prefix = "messenger (customer)" if direction == "user" else "messenger (rep)"
+    platform = str(data.get("platform") or "messenger").strip().lower()
+    role = "customer" if direction == "user" else "rep"
+    environment = os.environ.get("APP_ENV", "dev").strip().lower()
+    prefix = f"{platform}({role})({environment})"
     note = f"{prefix}: {text}"
 
     context = get_smartmoving_followup_context(sender_id)
@@ -117,12 +121,19 @@ def send_messenger_note(data: dict) -> dict:
     else:
         print(f"SmartMoving note: failed to post to {smartmoving_id}")
 
-    if direction == "user" and not data.get("skip_followup", False):
+    followups_enabled = os.environ.get("APP_ENV", "dev").strip().lower() == "prod"
+    if (
+        direction == "user"
+        and not data.get("skip_followup", False)
+        and followups_enabled
+    ):
         _sync_customer_message_followup(
             smartmoving_id,
             context.get("assigned_to_id"),
             text,
         )
+    elif direction == "user" and not followups_enabled:
+        print("SmartMoving follow-up skipped outside prod")
 
     data["smartmoving_id"] = smartmoving_id
     return data

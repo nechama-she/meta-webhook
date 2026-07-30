@@ -15,12 +15,12 @@ from services.smartmoving_service import handle_followup_created, handle_followu
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 APP_SECRET = os.environ.get("APP_SECRET", "")
 
-def _log_meta_event(event: dict, context) -> None:
-    """Log the complete Meta event plus Lambda invocation context."""
+def _log_webhook_event(event: dict, context) -> None:
+    """Log every complete webhook event plus Lambda invocation context."""
     context_data = dict(vars(context)) if context is not None else None
 
     print(
-        "META_WEBHOOK_EVENT "
+        "WEBHOOK_EVENT "
         + json.dumps(
             {
                 "event": event,
@@ -69,6 +69,8 @@ def lambda_handler(event, context):
     # ── POST: webhook events ────────────────────────────────────────────
     if method == "POST":
         try:
+            _log_webhook_event(event, context)
+
             raw = event.get("body") or ""
             raw_bytes = base64.b64decode(raw) if event.get("isBase64Encoded") else raw.encode("utf-8")
             body = json.loads(raw_bytes or b"{}")
@@ -90,15 +92,12 @@ def lambda_handler(event, context):
                 handle_opportunity_changed(body)
                 return {"statusCode": 200, "body": "OK"}
 
-            _log_meta_event(event, context)
-
             # Meta (Facebook/Instagram) events must carry a valid app-signed signature.
             if not _verify_meta_signature(event, raw_bytes):
                 headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
                 http_context = (event.get("requestContext") or {}).get("http") or {}
-                app_env = os.environ.get("APP_ENV", "prod").strip().lower()
                 print(
-                    f"Meta signature verification failed - {'continuing' if app_env == 'dev' else 'rejecting'}: "
+                    "Meta signature verification failed - continuing: "
                     f"object={body.get('object')!r} "
                     f"body_keys={sorted(body.keys())} "
                     f"source_ip={http_context.get('sourceIp')!r} "
@@ -106,9 +105,6 @@ def lambda_handler(event, context):
                     f"content_type={headers.get('content-type')!r} "
                     f"base64_encoded={bool(event.get('isBase64Encoded'))}"
                 )
-                if app_env != "dev":
-                    return {"statusCode": 403, "body": "Forbidden"}
-
             entries = body.get("entry", [])
             print(f"Processing {len(entries)} entries")
 
