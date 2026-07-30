@@ -1151,6 +1151,18 @@ class TestPendingNotes:
             yield
 
     @patch("db.rds_client._get_connection")
+    def test_company_scoped_phone_lookup_does_not_fall_back(self, mock_connection):
+        cursor = MagicMock()
+        cursor.mogrify.return_value = "scoped query"
+        cursor.fetchone.return_value = None
+        mock_connection.return_value.cursor.return_value.__enter__.return_value = cursor
+
+        from db.rds_client import get_smartmoving_id_by_phone
+
+        assert get_smartmoving_id_by_phone("2165413384", "TOP-TIER-ID") is None
+        assert cursor.execute.call_count == 1
+
+    @patch("db.rds_client._get_connection")
     def test_followup_context_returns_empty_assignment_for_unassigned_lead(self, mock_connection):
         cursor = MagicMock()
         cursor.fetchone.return_value = ("OPP-1", None)
