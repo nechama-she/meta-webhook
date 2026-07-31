@@ -100,6 +100,10 @@ def send_messenger_note(data: dict) -> dict:
         print("SmartMoving note: skipped (missing sender_id or text)")
         return data
 
+    if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
+        print("SmartMoving Messenger/Instagram note skipped outside prod")
+        return data
+
     direction = data.get("direction", "user")
     platform = str(data.get("platform") or "messenger").strip().lower()
     role = "customer" if direction == "user" else "rep"
