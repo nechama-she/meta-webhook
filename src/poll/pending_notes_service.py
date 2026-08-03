@@ -1,5 +1,7 @@
 """Retry pending SmartMoving notes that failed because the lead didn't exist yet."""
 
+import os
+
 from crm.smartmoving_notes import add_note
 from db import scan_pending_notes, delete_pending_note
 from db.rds_client import get_smartmoving_id, get_smartmoving_id_by_phone
@@ -10,6 +12,10 @@ def retry_pending_notes() -> int:
 
     Returns the number of notes successfully posted.
     """
+    if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
+        print("Pending SmartMoving note retry skipped outside prod")
+        return 0
+
     notes = scan_pending_notes()
     if not notes:
         print("Pending notes: none to retry")

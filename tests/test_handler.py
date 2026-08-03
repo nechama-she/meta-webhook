@@ -1180,7 +1180,7 @@ class TestPendingNotes:
 
     @pytest.fixture(autouse=True)
     def _env(self):
-        with patch.dict(os.environ, ENV_VARS):
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod"}):
             yield
 
     @patch("db.rds_client._get_connection")
@@ -1230,7 +1230,7 @@ class TestPendingNotes:
         data = {"sender_id": "u1", "text": "hello", "direction": "user"}
         send_messenger_note(data)
         mock_save.assert_called_once_with(
-            source="messenger", lookup_key="u1", note="messenger(customer)(dev): hello"
+            source="messenger", lookup_key="u1", note="messenger(customer)(prod): hello"
         )
 
     @patch(
@@ -1402,7 +1402,7 @@ class TestPendingNotes:
         "pipeline.actions.smartmoving_note.get_smartmoving_followup_context",
         return_value={"smartmoving_id": "OPP-1", "assigned_to_id": "USER-1"},
     )
-    def test_instagram_note_includes_platform_direction_and_environment(
+    def test_dev_instagram_message_does_not_write_smartmoving_note(
         self, mock_rds, mock_add, mock_get
     ):
         from pipeline.actions.smartmoving_note import send_messenger_note
@@ -1417,7 +1417,7 @@ class TestPendingNotes:
                 }
             )
 
-        mock_add.assert_called_once_with("OPP-1", "instagram(customer)(dev): hello")
+        mock_add.assert_not_called()
         mock_get.assert_not_called()
 
     @patch("pipeline.actions.smartmoving_note.get_followups")
@@ -1436,7 +1436,7 @@ class TestPendingNotes:
                 {"sender_id": "u1", "text": "customer message", "direction": "user"}
             )
 
-        mock_add.assert_called_once()
+        mock_add.assert_not_called()
         mock_get.assert_not_called()
 
     @patch("services.aircall_service.save_pending_note")
