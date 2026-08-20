@@ -1113,6 +1113,37 @@ class TestMessengerService:
         mock_save.assert_not_called()
 
 
+class TestChatApi:
+
+    @patch("ai.providers.chat_api.urllib.request.urlopen")
+    def test_missing_url_does_not_make_request(self, mock_urlopen, capsys):
+        from ai.providers import chat_api
+
+        with patch.object(chat_api, "CHAT_API_URL", ""), patch.object(
+            chat_api, "CHAT_API_KEY", "test-key"
+        ):
+            assert chat_api.generate_reply("u1", "hello") is None
+
+        mock_urlopen.assert_not_called()
+        assert "CHAT_API_URL is not configured" in capsys.readouterr().out
+
+    @patch("ai.providers.chat_api.urllib.request.urlopen")
+    def test_request_uses_api_key(self, mock_urlopen):
+        from ai.providers import chat_api
+
+        response = MagicMock()
+        response.read.return_value = b'{"response":"Hi"}'
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        with patch.object(chat_api, "CHAT_API_URL", "https://chat.example/api/chat"), patch.object(
+            chat_api, "CHAT_API_KEY", "test-meta-key"
+        ):
+            assert chat_api.generate_reply("u1", "hello") == "Hi"
+
+        request = mock_urlopen.call_args.args[0]
+        assert request.get_header("X-api-key") == "test-meta-key"
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  OpenAI client
 # ═══════════════════════════════════════════════════════════════════════
@@ -1462,6 +1493,7 @@ class TestPendingNotes:
             _post_sms_note("+12403586309", "+12405707987", "hi there", "received")
         mock_add.assert_called_once()
         mock_save.assert_not_called()
+
 
     @patch("services.aircall_service.save_pending_note")
     @patch("services.aircall_service.get_smartmoving_id_by_phone")
