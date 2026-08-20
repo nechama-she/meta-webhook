@@ -14,7 +14,5 @@ OPENAI_HEADERS = {
     "Authorization": f"Bearer {OPENAI_API_KEY}",
 }
 
-CHAT_API_URL = os.environ.get(
-    "CHAT_API_URL",
-    "https://lumpiness-afflicted-filtrate.ngrok-free.dev/api/chat",
-)
+CHAT_API_URL = os.environ.get("CHAT_API_URL", "").strip()
+CHAT_API_KEY = os.environ.get("CHAT_API_KEY", "").strip()

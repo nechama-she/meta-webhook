@@ -4,7 +4,7 @@ import json
 import urllib.request
 import urllib.error
 
-from ai.config import CHAT_API_URL
+from ai.config import CHAT_API_KEY, CHAT_API_URL
 
 
 def generate_reply(user_id: str, message: str, channel: str = "messenger") -> str | None:
@@ -12,6 +12,13 @@ def generate_reply(user_id: str, message: str, channel: str = "messenger") -> st
 
     Returns None on any error.
     """
+    if not CHAT_API_URL:
+        print("Chat API disabled: CHAT_API_URL is not configured")
+        return None
+    if not CHAT_API_KEY:
+        print("Chat API disabled: CHAT_API_KEY is not configured")
+        return None
+
     payload = {
         "user_id": user_id,
         "message": message,
@@ -20,7 +27,10 @@ def generate_reply(user_id: str, message: str, channel: str = "messenger") -> st
     req = urllib.request.Request(
         CHAT_API_URL,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": CHAT_API_KEY,
+        },
         method="POST",
     )
     try:
