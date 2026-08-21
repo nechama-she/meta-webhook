@@ -161,9 +161,20 @@ def handle_aircall_message(body: dict) -> None:
     chat_user_id = re.sub(r"\D", "", phone_number)
     if chat_user_id.startswith("1") and len(chat_user_id) == 11:
         chat_user_id = chat_user_id[1:]
-    lead_id = get_lead_id_by_phone(chat_user_id)
-    if lead_id:
-        chat_user_id = f"{lead_id}_{chat_user_id}"
+    if not db_company_id:
+        print(
+            "Aircall: Chat API skipped because the receiving number is not "
+            f"mapped to a company (number_id={number_id!r})"
+        )
+        return
+    lead_id = get_lead_id_by_phone(chat_user_id, db_company_id)
+    if not lead_id:
+        print(
+            "Aircall: Chat API skipped because no lead matched "
+            f"phone={chat_user_id} company_id={db_company_id}"
+        )
+        return
+    chat_user_id = f"{lead_id}_{chat_user_id}"
     print(f"Aircall: Calling chat API for {chat_user_id}")
     answer = chat_reply(chat_user_id, text, "sms")
     if not answer:
