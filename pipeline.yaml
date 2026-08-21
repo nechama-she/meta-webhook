@@ -111,6 +111,7 @@ Resources:
                 - sam build
                 - echo "Deploying to prod"
                 - sam deploy --stack-name meta-webhook-prod --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --capabilities CAPABILITY_IAM --region ${AWS::Region} --parameter-overrides Environment=prod RdsSecretArn=${RdsSecretArn} RdsHost=${RdsHost} RdsDbName=moving_crm VpcSubnetIds=${VpcSubnetIds} VpcSecurityGroupIds=${VpcSecurityGroupIds}
+                - sleep 10
                 - python scripts/migrate_message_indexes.py
       Environment:
         Type: LINUX_CONTAINER
