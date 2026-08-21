@@ -1144,6 +1144,68 @@ class TestChatApi:
         assert request.get_header("X-api-key") == "test-meta-key"
 
 
+class TestAircallClient:
+
+    @patch("aircall.client.urllib.request.urlopen")
+    def test_transfer_call_posts_user_id(self, mock_urlopen):
+        from aircall.client import transfer_call
+
+        response = MagicMock()
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        assert transfer_call(4069662281, user_id=456) is True
+
+        request = mock_urlopen.call_args.args[0]
+        assert request.full_url == "https://api.aircall.io/v1/calls/4069662281/transfers"
+        assert request.method == "POST"
+        assert json.loads(request.data) == {"user_id": "456"}
+
+    @patch("aircall.client.urllib.request.urlopen")
+    def test_transfer_call_to_team_with_strategy(self, mock_urlopen):
+        from aircall.client import transfer_call
+
+        mock_urlopen.return_value.__enter__.return_value = MagicMock()
+
+        assert transfer_call(123, team_id="789", dispatching_strategy="longest_idle") is True
+
+        request = mock_urlopen.call_args.args[0]
+        assert json.loads(request.data) == {
+            "team_id": "789",
+            "dispatching_strategy": "longest_idle",
+        }
+
+    def test_transfer_call_requires_exactly_one_destination(self):
+        from aircall.client import transfer_call
+
+        with pytest.raises(ValueError, match="Exactly one"):
+            transfer_call(123)
+        with pytest.raises(ValueError, match="Exactly one"):
+            transfer_call(123, user_id="456", team_id="789")
+
+
+class TestLeadIdLookup:
+
+    @patch("db.rds_client._get_connection")
+    def test_matches_phone_within_company(self, mock_connection):
+        from db.rds_client import get_lead_id_by_phone
+
+        cursor = mock_connection.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = ("lead-1",)
+
+        assert get_lead_id_by_phone("2402346865", "company-1") == "lead-1"
+        cursor.execute.assert_called_once_with(
+            "SELECT id FROM leads WHERE phone = %s AND company_id = %s LIMIT 1",
+            ("2402346865", "company-1"),
+        )
+
+    @patch("db.rds_client._get_connection")
+    def test_does_not_fall_back_without_company(self, mock_connection):
+        from db.rds_client import get_lead_id_by_phone
+
+        assert get_lead_id_by_phone("2402346865", None) is None
+        mock_connection.assert_not_called()
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  OpenAI client
 # ═══════════════════════════════════════════════════════════════════════

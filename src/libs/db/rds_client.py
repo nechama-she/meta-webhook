@@ -125,14 +125,17 @@ def get_lead_id_by_facebook_user_id(facebook_user_id: str) -> str | None:
         return None
 
 
-def get_lead_id_by_phone(phone: str) -> str | None:
-    """Look up the lead PK (id) for a given phone number (digits, no country code)."""
+def get_lead_id_by_phone(phone: str, company_id: str | None) -> str | None:
+    """Look up a lead PK using both phone and company, without fallback."""
+    if not company_id:
+        print("RDS lead_id lookup skipped: company_id is required")
+        return None
     try:
         conn = _get_connection()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id FROM leads WHERE phone = %s LIMIT 1",
-                (phone,),
+                "SELECT id FROM leads WHERE phone = %s AND company_id = %s LIMIT 1",
+                (phone, company_id),
             )
             row = cur.fetchone()
             return str(row[0]) if row else None
