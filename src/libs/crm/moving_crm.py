@@ -15,10 +15,42 @@ _ADMIN_PASSWORD_PARAM = os.environ.get(
     "/meta-webhook/MOVINGCRM_ADMIN_PASSWORD",
 )
 _AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+_API_SECRET = os.environ.get("MOVING_CRM_API_SECRET", "")
 _COMPANIES_CACHE_KEY = "moving_crm_companies_cache"
 
 _admin_password_cache: str | None = None
 _admin_token_cache: str | None = None
+
+
+def send_communication_update(
+    lead_id: str,
+    channel: str,
+    direction: str,
+    occurred_at: str,
+) -> bool:
+    """Record an inbound or outbound communication on a CRM lead."""
+    if not _BASE_URL or not _API_SECRET:
+        print("Moving CRM communication update skipped: API configuration is missing")
+        return False
+    body = json.dumps(
+        {
+            "lead_id": lead_id,
+            "channel": channel,
+            "direction": direction,
+            "occurred_at": occurred_at,
+        }
+    ).encode("utf-8")
+    result = request(
+        f"{_BASE_URL.rstrip('/')}/api/lead-activity/communication-update",
+        method="POST",
+        body=body,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-secret": _API_SECRET,
+        },
+        timeout=10,
+    )
+    return result is not None
 
 
 def _get_admin_password() -> str | None:
