@@ -25,12 +25,32 @@ Parameters:
     Type: CommaDelimitedList
     Default: ""
     Description: Security group IDs for the Lambdas (must reach RDS + have egress via NAT).
+  CodeBuildRoleName:
+    Type: String
+    Default: codebuild-meta-webhook-build-service-role
 
 Conditions:
   InVpc: !Not [!Equals [!Join ["", !Ref VpcSubnetIds], ""]]
   IsProd: !Equals [!Ref Environment, prod]
 
 Resources:
+
+  CodeBuildMessageIdIndexPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: meta-webhook-message-id-index-migration
+      Roles:
+        - !Ref CodeBuildRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:DescribeTable
+              - dynamodb:UpdateTable
+            Resource:
+              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations'
+              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages'
 
   # ── Shared Lambda Layer ────────────────────────────────────────────
   SharedLayer:
