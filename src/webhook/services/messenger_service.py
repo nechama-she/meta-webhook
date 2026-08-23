@@ -11,6 +11,7 @@ from db.rds_client import get_lead_id_by_facebook_user_id
 from meta_api import send_messenger_message
 from pipeline import run_pipeline
 from services.conversation_service import save_message
+from services.communication_service import record_communication
 
 _PHONE_RE = re.compile(r"phone\s*(?:number)?\s*[:\-]\s*\+?([0-9\s\-().]+)", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"email\s*[:\-]\s*([\w.\-+]+@[\w.\-]+\.\w+)", re.IGNORECASE)
@@ -99,6 +100,9 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
         return
 
     recipient = messaging["recipient"]["id"]
+    dedupe_key = f"messenger:echo:{platform}:{recipient}:{mid}"
+    if _is_duplicate_event(dedupe_key):
+        return
     page_id = entry.get("id")
     print(f"Echo from page {page_id} to user {recipient}: {text!r}")
 
@@ -110,6 +114,17 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
         page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="sales",
+    )
+
+    company = get_company(page_id)
+    company_id = (company or {}).get("id")
+    lead_id = get_lead_id_by_facebook_user_id(recipient, company_id)
+    record_communication(
+        lead_id=lead_id,
+        channel=platform,
+        direction="outbound",
+        timestamp=messaging.get("timestamp", 0),
+        milliseconds=True,
     )
 
     # Forward outbound message as a note to SmartMoving
@@ -155,6 +170,17 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
         role="user",
     )
 
+    company = get_company(page_id)
+    company_id = (company or {}).get("id")
+    lead_id = get_lead_id_by_facebook_user_id(sender_id, company_id)
+    record_communication(
+        lead_id=lead_id,
+        channel=platform,
+        direction="inbound",
+        timestamp=messaging.get("timestamp", 0),
+        milliseconds=True,
+    )
+
     # 1b. Cache sender contact info for leadgen lookup
     _cache_sender_info(sender_id, text)
 
@@ -186,7 +212,6 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
 
     # 3. Call chat API (dry run – save reply but don't send to client)
     print("Step 3: Calling chat API...")
-    lead_id = get_lead_id_by_facebook_user_id(sender_id)
     chat_user_id = f"{lead_id}_{sender_id}" if lead_id else sender_id
     answer = chat_reply(chat_user_id, text, "messenger")
     if answer:

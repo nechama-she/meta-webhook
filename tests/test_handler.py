@@ -1144,6 +1144,121 @@ class TestChatApi:
         assert request.get_header("X-api-key") == "test-meta-key"
 
 
+class TestAircallClient:
+
+    @patch("aircall.client.urllib.request.urlopen")
+    def test_transfer_call_posts_user_id(self, mock_urlopen):
+        from aircall.client import transfer_call
+
+        response = MagicMock()
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        assert transfer_call(4069662281, user_id=456) is True
+
+        request = mock_urlopen.call_args.args[0]
+        assert request.full_url == "https://api.aircall.io/v1/calls/4069662281/transfers"
+        assert request.method == "POST"
+        assert json.loads(request.data) == {"user_id": "456"}
+
+    @patch("aircall.client.urllib.request.urlopen")
+    def test_transfer_call_to_team_with_strategy(self, mock_urlopen):
+        from aircall.client import transfer_call
+
+        mock_urlopen.return_value.__enter__.return_value = MagicMock()
+
+        assert transfer_call(123, team_id="789", dispatching_strategy="longest_idle") is True
+
+        request = mock_urlopen.call_args.args[0]
+        assert json.loads(request.data) == {
+            "team_id": "789",
+            "dispatching_strategy": "longest_idle",
+        }
+
+    def test_transfer_call_requires_exactly_one_destination(self):
+        from aircall.client import transfer_call
+
+        with pytest.raises(ValueError, match="Exactly one"):
+            transfer_call(123)
+        with pytest.raises(ValueError, match="Exactly one"):
+            transfer_call(123, user_id="456", team_id="789")
+
+
+class TestLeadIdLookup:
+
+    @patch("db.rds_client._get_connection")
+    def test_matches_phone_within_company(self, mock_connection):
+        from db.rds_client import get_lead_id_by_phone
+
+        cursor = mock_connection.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = ("lead-1",)
+
+        assert get_lead_id_by_phone("2402346865", "company-1") == "lead-1"
+        cursor.execute.assert_called_once_with(
+            "SELECT id FROM leads WHERE phone = %s AND company_id = %s LIMIT 1",
+            ("2402346865", "company-1"),
+        )
+
+    @patch("db.rds_client._get_connection")
+    def test_does_not_fall_back_without_company(self, mock_connection):
+        from db.rds_client import get_lead_id_by_phone
+
+        assert get_lead_id_by_phone("2402346865", None) is None
+        mock_connection.assert_not_called()
+
+    @patch("db.rds_client._get_connection")
+    def test_facebook_lookup_matches_within_company(self, mock_connection):
+        from db.rds_client import get_lead_id_by_facebook_user_id
+
+        cursor = mock_connection.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = ("lead-2",)
+
+        assert get_lead_id_by_facebook_user_id("meta-user-1", "company-1") == "lead-2"
+        cursor.execute.assert_called_once_with(
+            "SELECT id FROM leads WHERE facebook_user_id = %s AND company_id = %s LIMIT 1",
+            ("meta-user-1", "company-1"),
+        )
+
+
+class TestCommunicationUpdate:
+
+    @patch("services.communication_service.send_communication_update", return_value=True)
+    def test_converts_meta_milliseconds_to_utc(self, mock_send):
+        from services.communication_service import record_communication
+
+        assert record_communication(
+            lead_id="lead-1",
+            channel="instagram",
+            direction="inbound",
+            timestamp=1787409000000,
+            milliseconds=True,
+        ) is True
+        mock_send.assert_called_once_with(
+            "lead-1", "instagram", "inbound", "2026-08-22T14:30:00Z"
+        )
+
+    @patch("crm.moving_crm.request", return_value="")
+    def test_posts_expected_crm_payload_and_secret(self, mock_request):
+        from crm import moving_crm
+
+        with patch.object(moving_crm, "_BASE_URL", "https://crm.example"), patch.object(
+            moving_crm, "_API_SECRET", "test-secret"
+        ):
+            assert moving_crm.send_communication_update(
+                "lead-1", "sms", "outbound", "2026-08-22T14:35:00Z"
+            ) is True
+
+        assert mock_request.call_args.args[0] == (
+            "https://crm.example/api/lead-activity/communication-update"
+        )
+        assert json.loads(mock_request.call_args.kwargs["body"]) == {
+            "lead_id": "lead-1",
+            "channel": "sms",
+            "direction": "outbound",
+            "occurred_at": "2026-08-22T14:35:00Z",
+        }
+        assert mock_request.call_args.kwargs["headers"]["x-api-secret"] == "test-secret"
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  OpenAI client
 # ═══════════════════════════════════════════════════════════════════════

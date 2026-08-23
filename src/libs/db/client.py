@@ -268,6 +268,7 @@ def save_conversation_message(
         "platform": platform,
         "page_id": page_id,
         "role": role,
+        "record_type": "message",
     }
     if role == "sales" and sales_name:
         item["sales_name"] = sales_name
@@ -333,6 +334,7 @@ def save_sms_message(
         "direction": direction,
         "company_number": company_number,
         "company_name": company_name,
+        "record_type": "message",
     }
     if number_id is not None:
         item["number_id"] = number_id

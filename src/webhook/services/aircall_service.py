@@ -15,6 +15,7 @@ from db.rds_client import (
     get_smartmoving_id_by_phone,
     get_user_id_by_aircall_number_id,
 )
+from services.communication_service import record_communication
 
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
@@ -126,6 +127,17 @@ def handle_aircall_message(body: dict) -> None:
     )
     _post_sms_note(phone_number, company_number, text, direction, db_company_id, number_id)
 
+    lookup_phone = re.sub(r"\D", "", phone_number)
+    if lookup_phone.startswith("1") and len(lookup_phone) == 11:
+        lookup_phone = lookup_phone[1:]
+    lead_id = get_lead_id_by_phone(lookup_phone, db_company_id)
+    record_communication(
+        lead_id=lead_id,
+        channel="sms",
+        direction="outbound" if direction == "sent" else "inbound",
+        timestamp=timestamp,
+    )
+
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
         return
@@ -161,9 +173,19 @@ def handle_aircall_message(body: dict) -> None:
     chat_user_id = re.sub(r"\D", "", phone_number)
     if chat_user_id.startswith("1") and len(chat_user_id) == 11:
         chat_user_id = chat_user_id[1:]
-    lead_id = get_lead_id_by_phone(chat_user_id)
-    if lead_id:
-        chat_user_id = f"{lead_id}_{chat_user_id}"
+    if not db_company_id:
+        print(
+            "Aircall: Chat API skipped because the receiving number is not "
+            f"mapped to a company (number_id={number_id!r})"
+        )
+        return
+    if not lead_id:
+        print(
+            "Aircall: Chat API skipped because no lead matched "
+            f"phone={chat_user_id} company_id={db_company_id}"
+        )
+        return
+    chat_user_id = f"{lead_id}_{chat_user_id}"
     print(f"Aircall: Calling chat API for {chat_user_id}")
     answer = chat_reply(chat_user_id, text, "sms")
     if not answer:
