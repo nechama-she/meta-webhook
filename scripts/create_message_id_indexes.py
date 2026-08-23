@@ -48,9 +48,38 @@ def ensure_index(table_name: str) -> None:
         time.sleep(10)
 
 
+def ensure_stream(table_name: str) -> None:
+    table = dynamodb.describe_table(TableName=table_name)["Table"]
+    stream = table.get("StreamSpecification") or {}
+    if stream.get("StreamEnabled") and stream.get("StreamViewType") == "NEW_IMAGE":
+        print(f"NEW_IMAGE stream is already enabled on {table_name}")
+        return
+
+    print(f"Enabling NEW_IMAGE stream on {table_name}")
+    dynamodb.update_table(
+        TableName=table_name,
+        StreamSpecification={
+            "StreamEnabled": True,
+            "StreamViewType": "NEW_IMAGE",
+        },
+    )
+    while True:
+        table = dynamodb.describe_table(TableName=table_name)["Table"]
+        stream = table.get("StreamSpecification") or {}
+        if (
+            table.get("TableStatus") == "ACTIVE"
+            and stream.get("StreamEnabled")
+            and stream.get("StreamViewType") == "NEW_IMAGE"
+        ):
+            print(f"NEW_IMAGE stream is enabled on {table_name}")
+            return
+        time.sleep(5)
+
+
 def main() -> None:
     for table_name in TABLES:
         ensure_index(table_name)
+        ensure_stream(table_name)
 
 
 if __name__ == "__main__":
