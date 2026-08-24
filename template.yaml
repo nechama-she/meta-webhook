@@ -48,9 +48,11 @@ Resources:
             Action:
               - dynamodb:DescribeTable
               - dynamodb:UpdateTable
+              - dynamodb:CreateTable
             Resource:
               - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations'
               - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages'
+              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/calls'
 
   # ── Shared Lambda Layer ────────────────────────────────────────────
   SharedLayer:

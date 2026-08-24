@@ -7,7 +7,7 @@ import uuid
 from ai import chat_reply
 from aircall import send_sms, trigger_outbound_call
 from crm.smartmoving_notes import add_note
-from db import try_claim_dedupe_key, save_sms_message, save_pending_note
+from db import try_claim_dedupe_key, save_call, save_sms_message, save_pending_note
 from db.rds_client import (
     get_company_by_aircall_number_id,
     get_lead_id_by_phone,
@@ -29,6 +29,37 @@ _OUTBOUND_CALL_AGENT_ID = "01KRESSHNZ47WSGHN4AS433F21"
 def _normalize_phone(raw: str) -> str:
     """Strip to E.164 format: +13015261984"""
     return re.sub(r"[^\d+]", "", raw)
+
+
+def handle_aircall_call(body: dict) -> None:
+    """Persist completed Aircall calls."""
+    if body.get("event") != "call.ended":
+        return
+    data = body.get("data") or {}
+    call_id = str(data.get("id") or "")
+    phone_number = _normalize_phone(data.get("raw_digits", ""))
+    company_number = _normalize_phone((data.get("number") or {}).get("e164_digits", ""))
+    timestamp = int(body.get("timestamp") or 0)
+    direction = data.get("direction")
+    if not call_id or not phone_number or not company_number or not timestamp:
+        print("Aircall call skipped: required call fields are missing")
+        return
+    if direction not in {"inbound", "outbound"}:
+        print(f"Aircall call skipped: invalid direction {direction!r}")
+        return
+    dedupe_key = f"aircall:event:call.ended:{call_id}"
+    if not try_claim_dedupe_key(dedupe_key):
+        print(f"Aircall: duplicate event skipped ({dedupe_key})")
+        return
+    save_call(
+        phone_number=phone_number,
+        timestamp=timestamp,
+        message_id=call_id,
+        company_number=company_number,
+        direction=direction,
+        answered=data.get("answered_at") is not None,
+        reason=data.get("missed_call_reason") or "",
+    )
 
 
 def _post_sms_note(phone: str, company_number: str, text: str, direction: str, company_id: str = "", number_id: int | None = None) -> None:

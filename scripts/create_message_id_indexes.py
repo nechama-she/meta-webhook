@@ -1,34 +1,76 @@
-"""Create message_id_index on the SMS and conversation tables."""
+"""Provision message-table indexes and streams, including the calls table."""
 
 import time
 
 import boto3
 
 
-INDEX_NAME = "message_id_index"
-TABLES = ("sms_messages", "conversations")
+MESSAGE_ID_INDEX = "message_id_index"
+TIMESTAMP_INDEX = "record-type-timestamp-index"
+TABLES = ("sms_messages", "conversations", "calls")
 
 dynamodb = boto3.client("dynamodb")
 
 
-def ensure_index(table_name: str) -> None:
+def ensure_calls_table() -> None:
+    try:
+        dynamodb.describe_table(TableName="calls")
+        return
+    except dynamodb.exceptions.ResourceNotFoundException:
+        pass
+    print("Creating calls table")
+    dynamodb.create_table(
+        TableName="calls",
+        AttributeDefinitions=[
+            {"AttributeName": "phone_number", "AttributeType": "S"},
+            {"AttributeName": "timestamp", "AttributeType": "N"},
+            {"AttributeName": "message_id", "AttributeType": "S"},
+            {"AttributeName": "record_type", "AttributeType": "S"},
+        ],
+        KeySchema=[
+            {"AttributeName": "phone_number", "KeyType": "HASH"},
+            {"AttributeName": "timestamp", "KeyType": "RANGE"},
+        ],
+        GlobalSecondaryIndexes=[
+            {
+                "IndexName": MESSAGE_ID_INDEX,
+                "KeySchema": [{"AttributeName": "message_id", "KeyType": "HASH"}],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+            {
+                "IndexName": TIMESTAMP_INDEX,
+                "KeySchema": [
+                    {"AttributeName": "record_type", "KeyType": "HASH"},
+                    {"AttributeName": "timestamp", "KeyType": "RANGE"},
+                ],
+                "Projection": {"ProjectionType": "ALL"},
+            },
+        ],
+        StreamSpecification={"StreamEnabled": True, "StreamViewType": "NEW_IMAGE"},
+        BillingMode="PAY_PER_REQUEST",
+    )
+    dynamodb.get_waiter("table_exists").wait(TableName="calls")
+
+
+def ensure_index(
+    table_name: str,
+    index_name: str,
+    key_schema: list[dict],
+    attribute_definitions: list[dict],
+) -> None:
     table = dynamodb.describe_table(TableName=table_name)["Table"]
     indexes = table.get("GlobalSecondaryIndexes", [])
-    existing = next((item for item in indexes if item["IndexName"] == INDEX_NAME), None)
+    existing = next((item for item in indexes if item["IndexName"] == index_name), None)
     if not existing:
-        print(f"Creating {INDEX_NAME} on {table_name}")
+        print(f"Creating {index_name} on {table_name}")
         dynamodb.update_table(
             TableName=table_name,
-            AttributeDefinitions=[
-                {"AttributeName": "message_id", "AttributeType": "S"},
-            ],
+            AttributeDefinitions=attribute_definitions,
             GlobalSecondaryIndexUpdates=[
                 {
                     "Create": {
-                        "IndexName": INDEX_NAME,
-                        "KeySchema": [
-                            {"AttributeName": "message_id", "KeyType": "HASH"},
-                        ],
+                        "IndexName": index_name,
+                        "KeySchema": key_schema,
                         "Projection": {"ProjectionType": "ALL"},
                     }
                 }
@@ -38,13 +80,13 @@ def ensure_index(table_name: str) -> None:
     while True:
         table = dynamodb.describe_table(TableName=table_name)["Table"]
         index = next(
-            (item for item in table.get("GlobalSecondaryIndexes", []) if item["IndexName"] == INDEX_NAME),
+            (item for item in table.get("GlobalSecondaryIndexes", []) if item["IndexName"] == index_name),
             None,
         )
         if index and index["IndexStatus"] == "ACTIVE":
-            print(f"{INDEX_NAME} is active on {table_name}")
+            print(f"{index_name} is active on {table_name}")
             return
-        print(f"Waiting for {INDEX_NAME} on {table_name}")
+        print(f"Waiting for {index_name} on {table_name}")
         time.sleep(10)
 
 
@@ -77,8 +119,26 @@ def ensure_stream(table_name: str) -> None:
 
 
 def main() -> None:
+    ensure_calls_table()
     for table_name in TABLES:
-        ensure_index(table_name)
+        ensure_index(
+            table_name,
+            MESSAGE_ID_INDEX,
+            [{"AttributeName": "message_id", "KeyType": "HASH"}],
+            [{"AttributeName": "message_id", "AttributeType": "S"}],
+        )
+        ensure_index(
+            table_name,
+            TIMESTAMP_INDEX,
+            [
+                {"AttributeName": "record_type", "KeyType": "HASH"},
+                {"AttributeName": "timestamp", "KeyType": "RANGE"},
+            ],
+            [
+                {"AttributeName": "record_type", "AttributeType": "S"},
+                {"AttributeName": "timestamp", "AttributeType": "N"},
+            ],
+        )
         ensure_stream(table_name)
 
 

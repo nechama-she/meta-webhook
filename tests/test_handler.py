@@ -123,6 +123,21 @@ class TestLambdaHandler:
         assert '\\"aircall-message-1\\"' in logs
         mock_aircall.assert_called_once_with(body)
 
+    @patch("handler.handle_aircall_call")
+    def test_aircall_call_event_dispatches(self, mock_call):
+        body = {
+            "resource": "call",
+            "event": "call.ended",
+            "data": {"id": 4074124078},
+        }
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps(body),
+        }
+
+        assert self.handler(event, None)["statusCode"] == 200
+        mock_call.assert_called_once_with(body)
+
     def test_post_missing_signature_logs_reason_and_continues(self, capsys):
         event = _signed_post({"object": "page"})
         event["headers"] = {"user-agent": "Meta-Test"}
@@ -1181,6 +1196,41 @@ class TestAircallClient:
             transfer_call(123)
         with pytest.raises(ValueError, match="Exactly one"):
             transfer_call(123, user_id="456", team_id="789")
+
+
+class TestAircallCallEvents:
+
+    @patch("services.aircall_service.save_call")
+    @patch("services.aircall_service.try_claim_dedupe_key", return_value=True)
+    def test_ended_missed_call_is_saved(self, mock_claim, mock_save):
+        from services.aircall_service import handle_aircall_call
+
+        handle_aircall_call(
+            {
+                "resource": "call",
+                "event": "call.ended",
+                "timestamp": 1787511896,
+                "data": {
+                    "id": 4074124078,
+                    "direction": "inbound",
+                    "raw_digits": "+1 240-370-3417",
+                    "answered_at": None,
+                    "missed_call_reason": "no_available_agent",
+                    "number": {"e164_digits": "+12029372625"},
+                },
+            }
+        )
+
+        mock_claim.assert_called_once_with("aircall:event:call.ended:4074124078")
+        mock_save.assert_called_once_with(
+            phone_number="+12403703417",
+            timestamp=1787511896,
+            message_id="4074124078",
+            company_number="+12029372625",
+            direction="inbound",
+            answered=False,
+            reason="no_available_agent",
+        )
 
 
 class TestLeadIdLookup:

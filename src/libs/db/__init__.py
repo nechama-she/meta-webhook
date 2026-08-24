@@ -14,6 +14,7 @@ from db.client import (
     scan_pending_notes,
     delete_pending_note,
     save_sms_message,
+    save_call,
     get_sms_messages,
     try_claim_dedupe_key,
 )
