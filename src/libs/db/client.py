@@ -12,6 +12,7 @@ from db.config import (
     LEADS_TABLE,
     CACHE_TABLE,
     SMS_MESSAGES_TABLE,
+    CALLS_TABLE,
     SENDER_INFO_TABLE,
     PENDING_NOTES_TABLE,
     WEBHOOK_DEDUPE_TABLE,
@@ -58,6 +59,18 @@ _ensure_table(
 )
 
 _ensure_table(
+    CALLS_TABLE,
+    [
+        {"AttributeName": "phone_number", "KeyType": "HASH"},
+        {"AttributeName": "timestamp", "KeyType": "RANGE"},
+    ],
+    [
+        {"AttributeName": "phone_number", "AttributeType": "S"},
+        {"AttributeName": "timestamp", "AttributeType": "N"},
+    ],
+)
+
+_ensure_table(
     SENDER_INFO_TABLE,
     [{"AttributeName": "sender_id", "KeyType": "HASH"}],
     [{"AttributeName": "sender_id", "AttributeType": "S"}],
@@ -68,6 +81,7 @@ _conversations_table = _dynamo.Table(CONVERSATIONS_TABLE)
 _leads_table = _dynamo.Table(LEADS_TABLE)
 _cache_table = _dynamo.Table(CACHE_TABLE)
 _sms_table = _dynamo.Table(SMS_MESSAGES_TABLE)
+_calls_table = _dynamo.Table(CALLS_TABLE)
 _sender_info_table = _dynamo.Table(SENDER_INFO_TABLE)
 
 _ensure_table(
@@ -358,3 +372,29 @@ def get_sms_messages(phone_number: str) -> list[dict]:
     except Exception as exc:
         print(f"SMS query error: {repr(exc)}")
         return []
+
+
+def save_call(
+    *,
+    phone_number: str,
+    timestamp: int,
+    message_id: str,
+    company_number: str,
+    direction: str,
+    answered: bool,
+    reason: str,
+) -> None:
+    """Persist a completed Aircall call."""
+    _calls_table.put_item(
+        Item={
+            "phone_number": phone_number,
+            "timestamp": timestamp,
+            "message_id": message_id,
+            "company_number": company_number,
+            "direction": direction,
+            "answered": answered,
+            "reason": reason,
+            "record_type": "call",
+        }
+    )
+    print(f"Call saved: {direction} {phone_number} answered={answered}")

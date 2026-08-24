@@ -9,7 +9,7 @@ import os
 from services.comment_service import process_comment
 from services.lead_service import process_leadgen
 from services.messenger_service import handle_echo, handle_user_message
-from services.aircall_service import handle_aircall_message
+from services.aircall_service import handle_aircall_call, handle_aircall_message
 from services.smartmoving_service import handle_followup_created, handle_followup_deleted, handle_opportunity_changed
 
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
@@ -78,6 +78,9 @@ def lambda_handler(event, context):
             # Aircall events have "resource", Meta events have "object"
             if body.get("resource") == "message":
                 handle_aircall_message(body)
+                return {"statusCode": 200, "body": "OK"}
+            if body.get("resource") == "call":
+                handle_aircall_call(body)
                 return {"statusCode": 200, "body": "OK"}
 
             # SmartMoving events have "event-type"
