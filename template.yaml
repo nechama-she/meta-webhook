@@ -25,9 +25,6 @@ Parameters:
     Type: CommaDelimitedList
     Default: ""
     Description: Security group IDs for the Lambdas (must reach RDS + have egress via NAT).
-  CodeBuildRoleName:
-    Type: String
-    Default: codebuild-meta-webhook-build-service-role
 
 Conditions:
   InVpc: !Not [!Equals [!Join ["", !Ref VpcSubnetIds], ""]]
@@ -35,24 +32,35 @@ Conditions:
 
 Resources:
 
-  CodeBuildMessageIdIndexPolicy:
-    Type: AWS::IAM::Policy
+  MessageInfrastructureMigrationFunction:
+    Type: AWS::Serverless::Function
+    Condition: IsProd
     Properties:
-      PolicyName: meta-webhook-message-id-index-migration
-      Roles:
-        - !Ref CodeBuildRoleName
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Action:
-              - dynamodb:DescribeTable
-              - dynamodb:UpdateTable
-              - dynamodb:CreateTable
-            Resource:
-              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations'
-              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages'
-              - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/calls'
+      FunctionName: meta_webhook_message_infrastructure_migration
+      CodeUri: scripts/
+      Handler: create_message_id_indexes.lambda_handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 256
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeTable
+                - dynamodb:UpdateTable
+                - dynamodb:CreateTable
+              Resource:
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations'
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages'
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/calls'
+
+  MessageInfrastructureMigration:
+    Type: Custom::MessageInfrastructureMigration
+    Condition: IsProd
+    Properties:
+      ServiceToken: !GetAtt MessageInfrastructureMigrationFunction.Arn
+      MigrationVersion: '2026-08-24-calls-v1'
 
   # ── Shared Lambda Layer ────────────────────────────────────────────
   SharedLayer:
