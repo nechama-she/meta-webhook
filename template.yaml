@@ -32,36 +32,6 @@ Conditions:
 
 Resources:
 
-  MessageInfrastructureMigrationFunction:
-    Type: AWS::Serverless::Function
-    Condition: IsProd
-    Properties:
-      FunctionName: meta_webhook_message_infrastructure_migration
-      CodeUri: scripts/
-      Handler: create_message_id_indexes.lambda_handler
-      Runtime: python3.12
-      Timeout: 900
-      MemorySize: 256
-      Policies:
-        - AWSLambdaBasicExecutionRole
-        - Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:DescribeTable
-                - dynamodb:UpdateTable
-                - dynamodb:CreateTable
-              Resource:
-                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations'
-                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages'
-                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/calls'
-
-  MessageInfrastructureMigration:
-    Type: Custom::MessageInfrastructureMigration
-    Condition: IsProd
-    Properties:
-      ServiceToken: !GetAtt MessageInfrastructureMigrationFunction.Arn
-      MigrationVersion: '2026-08-24-calls-v1'
-
   # ── Shared Lambda Layer ────────────────────────────────────────────
   SharedLayer:
     Type: AWS::Serverless::LayerVersion
