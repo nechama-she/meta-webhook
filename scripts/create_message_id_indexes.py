@@ -1,6 +1,8 @@
 """Provision message-table indexes and streams, including the calls table."""
 
+import json
 import time
+import urllib.request
 
 import boto3
 
@@ -140,6 +142,40 @@ def main() -> None:
             ],
         )
         ensure_stream(table_name)
+
+
+def _respond(event: dict, context, status: str, reason: str = "") -> None:
+    body = json.dumps(
+        {
+            "Status": status,
+            "Reason": reason or f"See CloudWatch log stream {context.log_stream_name}",
+            "PhysicalResourceId": "meta-webhook-message-infrastructure",
+            "StackId": event["StackId"],
+            "RequestId": event["RequestId"],
+            "LogicalResourceId": event["LogicalResourceId"],
+            "NoEcho": False,
+            "Data": {},
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        event["ResponseURL"],
+        data=body,
+        headers={"Content-Type": "", "Content-Length": str(len(body))},
+        method="PUT",
+    )
+    with urllib.request.urlopen(request, timeout=10):
+        pass
+
+
+def lambda_handler(event: dict, context) -> None:
+    """Provision during sam deploy; never delete external message tables."""
+    try:
+        if event.get("RequestType") != "Delete":
+            main()
+        _respond(event, context, "SUCCESS")
+    except Exception as exc:
+        print(f"Message infrastructure migration failed: {exc!r}")
+        _respond(event, context, "FAILED", repr(exc))
 
 
 if __name__ == "__main__":
