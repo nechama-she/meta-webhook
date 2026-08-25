@@ -272,6 +272,7 @@ def save_conversation_message(
     timestamp: int,
     role: str,
     sales_name: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> None:
     """Persist a single conversation message."""
     item: dict = {
@@ -286,6 +287,8 @@ def save_conversation_message(
     }
     if role == "sales" and sales_name:
         item["sales_name"] = sales_name
+    if attachments:
+        item["attachments"] = attachments
     try:
         _conversations_table.put_item(
             Item=item,
