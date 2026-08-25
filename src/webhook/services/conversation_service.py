@@ -21,6 +21,7 @@ def save_message(
     timestamp: int,
     role: str,
     sales_name: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> None:
     """Persist a single message (delegates to the DB client)."""
     save_conversation_message(
@@ -32,6 +33,7 @@ def save_message(
         timestamp=timestamp,
         role=role,
         sales_name=sales_name,
+        attachments=attachments,
     )
 
 

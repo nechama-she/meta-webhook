@@ -1127,6 +1127,30 @@ class TestMessengerService:
         handle_user_message(messaging, {"id": "p1"})
         mock_save.assert_not_called()
 
+    @patch("services.messenger_service.chat_reply")
+    @patch("services.messenger_service.save_message")
+    def test_attachment_is_preserved_without_calling_chat(self, mock_save, mock_reply):
+        from services.messenger_service import handle_user_message
+
+        attachments = [
+            {
+                "type": "location",
+                "payload": {"coordinates": {"lat": 40.7, "long": -74.0}},
+            }
+        ]
+        messaging = {
+            "sender": {"id": "u1"},
+            "message": {"mid": "m1", "attachments": attachments},
+            "timestamp": 1000,
+        }
+
+        handle_user_message(messaging, {"id": "p1"})
+
+        mock_save.assert_called_once()
+        assert mock_save.call_args.kwargs["text"] == ""
+        assert mock_save.call_args.kwargs["attachments"] == attachments
+        mock_reply.assert_not_called()
+
 
 class TestChatApi:
 
