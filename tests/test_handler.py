@@ -1269,46 +1269,6 @@ class TestLeadIdLookup:
         )
 
 
-class TestCommunicationUpdate:
-
-    @patch("services.communication_service.send_communication_update", return_value=True)
-    def test_converts_meta_milliseconds_to_utc(self, mock_send):
-        from services.communication_service import record_communication
-
-        assert record_communication(
-            lead_id="lead-1",
-            channel="instagram",
-            direction="inbound",
-            timestamp=1787409000000,
-            milliseconds=True,
-        ) is True
-        mock_send.assert_called_once_with(
-            "lead-1", "instagram", "inbound", "2026-08-22T14:30:00Z"
-        )
-
-    @patch("crm.moving_crm.request", return_value="")
-    def test_posts_expected_crm_payload_and_secret(self, mock_request):
-        from crm import moving_crm
-
-        with patch.object(moving_crm, "_BASE_URL", "https://crm.example"), patch.object(
-            moving_crm, "_API_SECRET", "test-secret"
-        ):
-            assert moving_crm.send_communication_update(
-                "lead-1", "sms", "outbound", "2026-08-22T14:35:00Z"
-            ) is True
-
-        assert mock_request.call_args.args[0] == (
-            "https://crm.example/api/lead-activity/communication-update"
-        )
-        assert json.loads(mock_request.call_args.kwargs["body"]) == {
-            "lead_id": "lead-1",
-            "channel": "sms",
-            "direction": "outbound",
-            "occurred_at": "2026-08-22T14:35:00Z",
-        }
-        assert mock_request.call_args.kwargs["headers"]["x-api-secret"] == "test-secret"
-
-
 # ═══════════════════════════════════════════════════════════════════════
 #  OpenAI client
 # ═══════════════════════════════════════════════════════════════════════

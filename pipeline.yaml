@@ -72,12 +72,6 @@ Resources:
               - Effect: Allow
                 Action: [ec2:*]
                 Resource: "*"
-              - Effect: Allow
-                Action: [dynamodb:DescribeTable, dynamodb:UpdateTable, dynamodb:CreateTable]
-                Resource:
-                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/conversations"
-                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/sms_messages"
-                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/calls"
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -108,7 +102,6 @@ Resources:
                 - sam build
                 - echo "Deploying to prod"
                 - sam deploy --stack-name meta-webhook-prod --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --capabilities CAPABILITY_IAM --region ${AWS::Region} --parameter-overrides Environment=prod RdsSecretArn=${RdsSecretArn} RdsHost=${RdsHost} RdsDbName=moving_crm VpcSubnetIds=${VpcSubnetIds} VpcSecurityGroupIds=${VpcSecurityGroupIds}
-                - sleep 10
                 - python scripts/create_message_id_indexes.py
       Environment:
         Type: LINUX_CONTAINER

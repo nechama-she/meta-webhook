@@ -15,13 +15,11 @@ from db.rds_client import (
     get_smartmoving_id_by_phone,
     get_user_id_by_aircall_number_id,
 )
-from services.communication_service import record_communication
 
 ENABLE_OPENAI_ANSWER = (
     os.environ.get("ENABLE_OPENAI_ANSWER", "false").lower() == "true"
 )
 
-_GORILLA_NUMBER_ID = 645873
 _TEST_PHONE = "+12403703417"
 _OUTBOUND_CALL_AGENT_ID = "01KRESSHNZ47WSGHN4AS433F21"
 
@@ -162,13 +160,6 @@ def handle_aircall_message(body: dict) -> None:
     if lookup_phone.startswith("1") and len(lookup_phone) == 11:
         lookup_phone = lookup_phone[1:]
     lead_id = get_lead_id_by_phone(lookup_phone, db_company_id)
-    record_communication(
-        lead_id=lead_id,
-        channel="sms",
-        direction="outbound" if direction == "sent" else "inbound",
-        timestamp=timestamp,
-    )
-
     # 2. Auto-reply only on received messages
     if direction != "received" or not number_id:
         return
@@ -192,11 +183,6 @@ def handle_aircall_message(body: dict) -> None:
                 "home_size": "3 bedroom apartment",
             },
         )
-        return
-
-    # Keep AI auto-reply scoped to Gorilla number only.
-    if number_id != _GORILLA_NUMBER_ID:
-        print(f"Aircall: auto-reply disabled for non-Gorilla number {number_id} ({company_name})")
         return
 
     # 3. Call chat API with the received message.
