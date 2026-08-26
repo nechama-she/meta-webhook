@@ -188,6 +188,25 @@ class TestLambdaHandler:
         self.handler(event, None)
         mock_msg.assert_called_once()
 
+    @patch("handler.handle_user_message")
+    def test_post_messenger_attachment_dispatches(self, mock_msg):
+        entry = {
+            "id": "p1",
+            "messaging": [{
+                "sender": {"id": "u1"},
+                "message": {
+                    "mid": "m1",
+                    "attachments": [{
+                        "type": "image",
+                        "payload": {"url": "https://example.com/image.jpg"},
+                    }],
+                },
+            }],
+        }
+        event = _signed_post({"entry": [entry]})
+        self.handler(event, None)
+        mock_msg.assert_called_once()
+
     @patch("handler.handle_echo")
     def test_post_echo_dispatches(self, mock_echo):
         entry = {

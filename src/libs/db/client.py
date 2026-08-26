@@ -290,13 +290,26 @@ def save_conversation_message(
     if attachments:
         item["attachments"] = attachments
     try:
+        print(
+            "Conversation save attempt: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])}"
+        )
         _conversations_table.put_item(
             Item=item,
             ConditionExpression="attribute_not_exists(message_id)",
         )
-        print(f"Conversation saved for user {user_id} as {role}")
+        print(
+            "Conversation save succeeded: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])}"
+        )
     except Exception as exc:
-        print("Conversation save error:", repr(exc))
+        print(
+            "Conversation save failed: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])} error={exc!r}"
+        )
 
 
 def replace_summary(
