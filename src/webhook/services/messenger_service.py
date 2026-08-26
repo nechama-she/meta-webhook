@@ -93,9 +93,10 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
     """Process a page-echo (admin/bot outbound) message."""
     message_data = messaging.get("message") or {}
     text = (message_data.get("text") or "").strip()
+    attachments = message_data.get("attachments") or []
     mid = message_data.get("mid")
-    if not text or not mid:
-        print("Echo skipped: empty text or missing mid")
+    if not mid or (not text and not attachments):
+        print("Echo skipped: empty message or missing mid")
         return
 
     recipient = messaging["recipient"]["id"]
@@ -113,7 +114,12 @@ def handle_echo(messaging: dict, entry: dict, platform: str = "messenger") -> No
         page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="sales",
+        attachments=attachments,
     )
+
+    if not text:
+        print("Echo attachment saved; text pipeline skipped")
+        return
 
     # Forward outbound message as a note to SmartMoving
     run_pipeline(
@@ -132,10 +138,11 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
     sender_id = messaging["sender"]["id"]
     message_data = messaging.get("message") or {}
     text = (message_data.get("text") or "").strip()
+    attachments = message_data.get("attachments") or []
     mid = message_data.get("mid")
 
-    if not text or not mid:
-        print(f"User message skipped: empty text or missing mid (sender={sender_id})")
+    if not mid or (not text and not attachments):
+        print(f"User message skipped: empty message or missing mid (sender={sender_id})")
         return
 
     dedupe_key = f"messenger:user:{platform}:{sender_id}:{mid}"
@@ -156,7 +163,12 @@ def handle_user_message(messaging: dict, entry: dict, platform: str = "messenger
         page_id=page_id,
         timestamp=messaging.get("timestamp", 0),
         role="user",
+        attachments=attachments,
     )
+
+    if not text:
+        print("User attachment saved; chat and text pipelines skipped")
+        return
 
     company = get_company(page_id)
     company_id = (company or {}).get("id")

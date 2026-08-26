@@ -151,14 +151,22 @@ def _handle_messaging(entry: dict, platform: str = "messenger") -> None:
     for messaging in entry.get("messaging", []):
         message_data = messaging.get("message") or {}
         text = (message_data.get("text") or "").strip()
+        attachments = message_data.get("attachments") or []
         mid = message_data.get("mid")
-        if not text or not mid:
+        if not mid:
+            print("Messaging skipped: missing message ID")
+            continue
+        if not text and not attachments:
+            print(f"Messaging skipped: empty message mid={mid}")
             continue
 
         is_echo = message_data.get("is_echo", False)
         sender = messaging.get("sender", {}).get("id", "?")
         recipient = messaging.get("recipient", {}).get("id", "?")
-        print(f"Messaging: mid={mid}, echo={is_echo}, sender={sender}, recipient={recipient}, text={text!r}")
+        print(
+            f"Messaging: mid={mid}, echo={is_echo}, sender={sender}, "
+            f"recipient={recipient}, text={text!r}, attachments={len(attachments)}"
+        )
 
         if is_echo:
             handle_echo(messaging, entry, platform)

@@ -272,6 +272,7 @@ def save_conversation_message(
     timestamp: int,
     role: str,
     sales_name: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> None:
     """Persist a single conversation message."""
     item: dict = {
@@ -286,14 +287,29 @@ def save_conversation_message(
     }
     if role == "sales" and sales_name:
         item["sales_name"] = sales_name
+    if attachments:
+        item["attachments"] = attachments
     try:
+        print(
+            "Conversation save attempt: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])}"
+        )
         _conversations_table.put_item(
             Item=item,
             ConditionExpression="attribute_not_exists(message_id)",
         )
-        print(f"Conversation saved for user {user_id} as {role}")
+        print(
+            "Conversation save succeeded: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])}"
+        )
     except Exception as exc:
-        print("Conversation save error:", repr(exc))
+        print(
+            "Conversation save failed: "
+            f"user_id={user_id} message_id={message_id} role={role} "
+            f"attachments={len(attachments or [])} error={exc!r}"
+        )
 
 
 def replace_summary(
