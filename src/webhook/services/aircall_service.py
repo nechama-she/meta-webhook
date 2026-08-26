@@ -147,10 +147,12 @@ def handle_aircall_message(body: dict) -> None:
     company = get_company_by_aircall_number_id(number_id) if number_id else None
     db_company_id = company["id"] if company else None
     db_company_name = company["name"] if company else None
+    rep_id = get_user_id_by_aircall_number_id(number_id) if number_id and not company else None
     print(
-        "Aircall SMS: company mapping "
+        "Aircall SMS: receiving-number mapping "
         f"number_id={number_id!r} event_name={company_name!r} "
         f"db_company_id={db_company_id!r} "
+        f"rep_id={rep_id!r} "
         f"db_aircall_name={(company or {}).get('aircall_name')!r} "
         f"db_company_name={db_company_name!r}"
     )
@@ -159,9 +161,13 @@ def handle_aircall_message(body: dict) -> None:
     lookup_phone = re.sub(r"\D", "", phone_number)
     if lookup_phone.startswith("1") and len(lookup_phone) == 11:
         lookup_phone = lookup_phone[1:]
-    lead_id = get_lead_id_by_phone(lookup_phone, db_company_id)
+    lead_id = get_lead_id_by_phone(lookup_phone, db_company_id) if db_company_id else None
     # 2. Auto-reply only on received messages
-    if direction != "received" or not number_id:
+    if direction != "received":
+        print(f"Aircall: Chat API skipped for non-inbound message direction={direction!r}")
+        return
+    if not number_id:
+        print("Aircall: Chat API skipped because number_id is missing")
         return
     if os.environ.get("APP_ENV", "dev").strip().lower() != "prod":
         print("Aircall outbound messaging skipped outside prod")
@@ -190,20 +196,19 @@ def handle_aircall_message(body: dict) -> None:
     chat_user_id = re.sub(r"\D", "", phone_number)
     if chat_user_id.startswith("1") and len(chat_user_id) == 11:
         chat_user_id = chat_user_id[1:]
-    if not db_company_id:
+    if not db_company_id and not rep_id:
         print(
             "Aircall: Chat API skipped because the receiving number is not "
-            f"mapped to a company (number_id={number_id!r})"
+            f"mapped to a company or rep (number_id={number_id!r})"
         )
         return
-    if not lead_id:
-        print(
-            "Aircall: Chat API skipped because no lead matched "
-            f"phone={chat_user_id} company_id={db_company_id}"
-        )
-        return
-    chat_user_id = f"{lead_id}_{chat_user_id}"
-    print(f"Aircall: Calling chat API for {chat_user_id}")
+    if lead_id:
+        chat_user_id = f"{lead_id}_{chat_user_id}"
+    route_type = "company" if db_company_id else "rep"
+    print(
+        f"Aircall: Calling chat API for {chat_user_id} "
+        f"via {route_type} number_id={number_id!r}"
+    )
     answer = chat_reply(chat_user_id, text, "sms")
     if not answer:
         print("Aircall: Chat API returned no answer")

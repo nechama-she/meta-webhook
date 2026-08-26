@@ -1276,6 +1276,67 @@ class TestAircallCallEvents:
         )
 
 
+class TestAircallSmsChatRouting:
+
+    @staticmethod
+    def _message(number_id=123):
+        return {
+            "event": "message.received",
+            "timestamp": 1787754998,
+            "data": {
+                "id": "sms-1",
+                "external_number": "+1 310 981 8778",
+                "body": "hello",
+                "number": {
+                    "id": number_id,
+                    "e164_digits": "+1 833-749-5939",
+                    "name": "Receiving line",
+                },
+            },
+        }
+
+    @patch("services.aircall_service._post_sms_note")
+    @patch("services.aircall_service.get_lead_id_by_phone", return_value=None)
+    @patch("services.aircall_service.get_company_by_aircall_number_id")
+    @patch("services.aircall_service.get_user_id_by_aircall_number_id")
+    @patch("services.aircall_service.chat_reply", return_value=None)
+    @patch("services.aircall_service.save_sms_message")
+    @patch("services.aircall_service.try_claim_dedupe_key", return_value=True)
+    def test_company_number_calls_chat_without_matching_lead(
+        self, mock_claim, mock_save, mock_chat, mock_rep, mock_company,
+        mock_lead, mock_note,
+    ):
+        from services.aircall_service import handle_aircall_message
+
+        mock_company.return_value = {
+            "id": "company-1", "name": "Company", "aircall_name": "Company"
+        }
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            handle_aircall_message(self._message())
+
+        mock_chat.assert_called_once_with("3109818778", "hello", "sms")
+        mock_rep.assert_not_called()
+
+    @patch("services.aircall_service._post_sms_note")
+    @patch("services.aircall_service.get_lead_id_by_phone")
+    @patch("services.aircall_service.get_company_by_aircall_number_id", return_value=None)
+    @patch("services.aircall_service.get_user_id_by_aircall_number_id", return_value="rep-1")
+    @patch("services.aircall_service.chat_reply", return_value=None)
+    @patch("services.aircall_service.save_sms_message")
+    @patch("services.aircall_service.try_claim_dedupe_key", return_value=True)
+    def test_rep_number_calls_chat_without_assignment_check(
+        self, mock_claim, mock_save, mock_chat, mock_rep, mock_company,
+        mock_lead, mock_note,
+    ):
+        from services.aircall_service import handle_aircall_message
+
+        with patch.dict(os.environ, {"APP_ENV": "prod"}):
+            handle_aircall_message(self._message())
+
+        mock_chat.assert_called_once_with("3109818778", "hello", "sms")
+        mock_lead.assert_not_called()
+
+
 class TestLeadIdLookup:
 
     @patch("db.rds_client._get_connection")
