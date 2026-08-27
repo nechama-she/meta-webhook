@@ -216,7 +216,8 @@ def handle_aircall_message(body: dict) -> None:
     
     print(f"Aircall chat API answer: {answer!r}")
 
-    if not ENABLE_OPENAI_ANSWER:
+    is_chat_error = answer.lower().startswith("error:")
+    if is_chat_error or not ENABLE_OPENAI_ANSWER:
         save_sms_message(
             phone_number=phone_number,
             timestamp=timestamp + 1,
@@ -228,8 +229,11 @@ def handle_aircall_message(body: dict) -> None:
             number_id=number_id,
             sales_name="AI",
         )
-        print("Aircall: AI reply saved as draft (not sent)")
-        print("Aircall: SMS reply disabled (chat API called, not sending)")
+        if is_chat_error:
+            print("Aircall: Chat API error saved as draft (never sent)")
+        else:
+            print("Aircall: AI reply saved as draft (not sent)")
+            print("Aircall: SMS reply disabled (chat API called, not sending)")
         return
     
     # 4. Send SMS reply

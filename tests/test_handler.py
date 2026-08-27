@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import sys
+import urllib.error
 from datetime import date, timedelta
 from unittest.mock import patch, MagicMock, call
 
@@ -1180,7 +1181,9 @@ class TestChatApi:
         with patch.object(chat_api, "CHAT_API_URL", ""), patch.object(
             chat_api, "CHAT_API_KEY", "test-key"
         ):
-            assert chat_api.generate_reply("u1", "hello") is None
+            assert chat_api.generate_reply("u1", "hello") == (
+                "error: CHAT_API_URL is not configured"
+            )
 
         mock_urlopen.assert_not_called()
         assert "CHAT_API_URL is not configured" in capsys.readouterr().out
@@ -1200,6 +1203,23 @@ class TestChatApi:
 
         request = mock_urlopen.call_args.args[0]
         assert request.get_header("X-api-key") == "test-meta-key"
+
+    @patch("ai.providers.chat_api.urllib.request.urlopen")
+    def test_http_error_is_returned_for_persistence(self, mock_urlopen):
+        from ai.providers import chat_api
+
+        error = urllib.error.HTTPError(
+            "https://chat.example/api/chat", 500, "Server Error", {}, None
+        )
+        error.read = MagicMock(return_value=b'{"detail":"failed"}')
+        mock_urlopen.side_effect = error
+
+        with patch.object(chat_api, "CHAT_API_URL", "https://chat.example/api/chat"), patch.object(
+            chat_api, "CHAT_API_KEY", "test-meta-key"
+        ):
+            assert chat_api.generate_reply("u1", "hello") == (
+                'error: Chat API HTTP 500: {"detail":"failed"}'
+            )
 
 
 class TestAircallClient:
