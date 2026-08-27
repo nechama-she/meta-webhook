@@ -8,16 +8,15 @@ from ai.config import CHAT_API_KEY, CHAT_API_URL
 
 
 def generate_reply(user_id: str, message: str, channel: str = "messenger") -> str | None:
-    """Send a message to the chat API and return the reply.
-
-    Returns None on any error.
-    """
+    """Return the chat reply, or a persistable ``error: ...`` description."""
     if not CHAT_API_URL:
-        print("Chat API disabled: CHAT_API_URL is not configured")
-        return None
+        error = "error: CHAT_API_URL is not configured"
+        print(f"Chat API: {error}")
+        return error
     if not CHAT_API_KEY:
-        print("Chat API disabled: CHAT_API_KEY is not configured")
-        return None
+        error = "error: CHAT_API_KEY is not configured"
+        print(f"Chat API: {error}")
+        return error
 
     payload = {
         "user_id": user_id,
@@ -35,12 +34,19 @@ def generate_reply(user_id: str, message: str, channel: str = "messenger") -> st
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            raw_response = resp.read().decode("utf-8", "replace")
+            data = json.loads(raw_response)
             reply = data.get("response") or data.get("message") or data.get("reply")
             print(f"Chat API reply for {user_id}: {reply!r}")
-            return reply.strip() if reply else None
+            if reply:
+                return reply.strip() if isinstance(reply, str) else json.dumps(reply)
+            return f"error: Chat API response contained no reply: {raw_response}"
     except urllib.error.HTTPError as exc:
-        print(f"Chat API HTTP error: {exc.code} {exc.read().decode('utf-8', 'ignore')}")
+        body = exc.read().decode("utf-8", "replace").strip()
+        error = f"error: Chat API HTTP {exc.code}: {body or exc.reason}"
+        print(error)
+        return error
     except Exception as exc:
-        print(f"Chat API error: {repr(exc)}")
-    return None
+        error = f"error: Chat API request failed: {exc!r}"
+        print(error)
+        return error
