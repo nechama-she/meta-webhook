@@ -14,7 +14,7 @@ from crm.moving_crm import (
     sync_smartmoving_documents,
 )
 from crm.smartmoving_notes import add_note, get_audit_activity, get_followups, get_opportunity, get_opportunity_result
-from db import try_claim_dedupe_key
+from db import cache_get, cache_set, try_claim_dedupe_key
 from db.rds_client import (
     delete_followup,
     get_company_id_by_name,
@@ -552,6 +552,27 @@ def handle_followup_deleted(body: dict) -> None:
     delete_followup(followup_id)
 
 
+def _opportunity_deleted_key(opportunity_id: str) -> str:
+    return f"smartmoving:opportunity-deleted:{opportunity_id}"
+
+
+def _is_opportunity_deleted(opportunity_id: str) -> bool:
+    return cache_get(_opportunity_deleted_key(opportunity_id)) == "1"
+
+
+def handle_opportunity_deleted(body: dict) -> None:
+    """Permanently tombstone and delete a SmartMoving opportunity's CRM lead."""
+    opportunity_id = body.get("opportunity-id")
+    if not opportunity_id:
+        print("Opportunity delete skipped: missing opportunity-id")
+        return
+
+    cache_set(_opportunity_deleted_key(opportunity_id), "1")
+    print(f"Opportunity deletion tombstone saved: opportunity_id={opportunity_id}")
+    deleted = delete_lead_by_smartmoving(opportunity_id)
+    print(f"Opportunity deleted from CRM: opportunity_id={opportunity_id} ok={deleted}")
+
+
 def handle_opportunity_changed(body: dict) -> None:
     """Process an opportunity-changed event.
 
@@ -561,6 +582,12 @@ def handle_opportunity_changed(body: dict) -> None:
     opportunity_id = body.get("opportunity-id")
     if not opportunity_id:
         print("Missing opportunity-id in opportunity-changed event")
+        return
+    if _is_opportunity_deleted(opportunity_id):
+        print(
+            "Opportunity change ignored because opportunity is permanently deleted: "
+            f"opportunity_id={opportunity_id}"
+        )
         return
 
     request_logs: list[dict] = []
@@ -574,6 +601,16 @@ def handle_opportunity_changed(body: dict) -> None:
         audit_activities=activities,
         request_logs=request_logs,
     )
+
+    # A delete webhook may arrive while the sync above is in progress.
+    if _is_opportunity_deleted(opportunity_id):
+        print(
+            "Opportunity was deleted during sync; enforcing deletion: "
+            f"opportunity_id={opportunity_id}"
+        )
+        deleted = delete_lead_by_smartmoving(opportunity_id)
+        print(f"Post-sync opportunity deletion: opportunity_id={opportunity_id} ok={deleted}")
+        return
 
     if not activities:
         print(f"No audit activity for {opportunity_id}")

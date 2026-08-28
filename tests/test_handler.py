@@ -1907,6 +1907,21 @@ class TestSmartMovingFollowup:
         assert resp["statusCode"] == 200
         mock_del.assert_called_once_with("abc-123")
 
+    @patch("handler.handle_opportunity_deleted")
+    def test_handler_routes_opportunity_deleted(self, mock_delete):
+        from handler import lambda_handler
+
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "opportunity-deleted",
+                "opportunity-id": "op1",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_delete.assert_called_once()
+
 
 class TestOpportunityChanged:
 
@@ -1914,7 +1929,9 @@ class TestOpportunityChanged:
 
     @pytest.fixture(autouse=True)
     def _env(self):
-        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod", "REP_ASSIGNMENT_DRY_RUN": "false"}):
+        with patch.dict(os.environ, {**ENV_VARS, "APP_ENV": "prod", "REP_ASSIGNMENT_DRY_RUN": "false"}), patch(
+            "services.smartmoving_service.cache_get", return_value=None
+        ):
             yield
 
     def _event(self):
@@ -1933,6 +1950,52 @@ class TestOpportunityChanged:
         payload["opportunity-status"] = status
         event["body"] = json.dumps(payload)
         return event
+
+    @patch("services.smartmoving_service.delete_lead_by_smartmoving", return_value=True)
+    @patch("services.smartmoving_service.cache_set")
+    def test_deleted_event_saves_permanent_tombstone_then_deletes(
+        self, mock_cache_set, mock_delete
+    ):
+        from services.smartmoving_service import handle_opportunity_deleted
+
+        handle_opportunity_deleted({
+            "event-type": "opportunity-deleted",
+            "opportunity-id": self._OPP_ID,
+        })
+
+        mock_cache_set.assert_called_once_with(
+            f"smartmoving:opportunity-deleted:{self._OPP_ID}", "1"
+        )
+        mock_delete.assert_called_once_with(self._OPP_ID)
+
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_changed_event_is_ignored_after_tombstone(self, mock_audit):
+        from services import smartmoving_service
+
+        with patch.object(smartmoving_service, "cache_get", return_value="1"):
+            smartmoving_service.handle_opportunity_changed({
+                "event-type": "opportunity-changed",
+                "opportunity-id": self._OPP_ID,
+            })
+
+        mock_audit.assert_not_called()
+
+    @patch("services.smartmoving_service.delete_lead_by_smartmoving", return_value=True)
+    @patch("services.smartmoving_service._sync_opportunity_to_crm", return_value=True)
+    @patch("services.smartmoving_service.get_audit_activity", return_value=[])
+    def test_delete_arriving_during_sync_wins(
+        self, mock_audit, mock_sync, mock_delete
+    ):
+        from services import smartmoving_service
+
+        with patch.object(smartmoving_service, "cache_get", side_effect=[None, "1"]):
+            smartmoving_service.handle_opportunity_changed({
+                "event-type": "opportunity-changed",
+                "opportunity-id": self._OPP_ID,
+            })
+
+        mock_sync.assert_called_once()
+        mock_delete.assert_called_once_with(self._OPP_ID)
 
     @patch("services.smartmoving_service.patch_lead", return_value=True)
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
