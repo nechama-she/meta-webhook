@@ -324,19 +324,15 @@ def _sync_opportunity_to_crm(
 
     existing_lead = get_lead_by_smartmoving_id(opportunity_id)
     if not existing_lead:
-        if mapped_status in _BOOKED_DATE_STATUSES:
-            print(f"Lead not found for {opportunity_id}; creating from SmartMoving status={mapped_status}")
-            _ensure_lead_exists(
-                opportunity_id,
-                mapped_status,
-                opportunity=opportunity,
-                booked_move_date=booked_move_date,
-                request_logs=request_logs,
-            )
-            existing_lead = get_lead_by_smartmoving_id(opportunity_id)
-        else:
-            print(f"Lead not found for {opportunity_id}; skipping CRM sync (status={mapped_status!r})")
-            return False
+        print(f"Lead not found for {opportunity_id}; creating from SmartMoving status={mapped_status}")
+        _ensure_lead_exists(
+            opportunity_id,
+            mapped_status,
+            opportunity=opportunity,
+            booked_move_date=booked_move_date,
+            request_logs=request_logs,
+        )
+        existing_lead = get_lead_by_smartmoving_id(opportunity_id)
 
     if not existing_lead:
         print(f"Lead still missing for {opportunity_id}; skipping CRM sync")
