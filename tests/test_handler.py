@@ -2337,11 +2337,37 @@ class TestOpportunityChanged:
 
     @patch("services.smartmoving_service._ensure_lead_exists")
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
+    @patch("services.smartmoving_service.get_opportunity")
     @patch("services.smartmoving_service.get_audit_activity")
-    def test_does_not_create_missing_lead_for_other_status(self, mock_audit, mock_lead, mock_ensure):
+    def test_creates_missing_lead_for_other_status(
+        self, mock_audit, mock_opp, mock_lead, mock_ensure
+    ):
         mock_audit.return_value = [{"description": "Opportunity reopened.", "activityType": 1}]
-        mock_lead.return_value = None
+        mock_opp.return_value = {
+            "id": self._OPP_ID,
+            "status": 0,
+            "customer": {
+                "name": "John Smith",
+                "phoneNumber": "2403586309",
+                "emailAddress": "john@example.com",
+            },
+        }
+        mock_lead.side_effect = [
+            None,
+            {
+                "id": "crm-1",
+                "full_name": "John Smith",
+                "phone": "2403586309",
+                "company_name": "Gorilla Haulers",
+            },
+        ]
         from handler import lambda_handler
         resp = lambda_handler(self._event_with_status(0), None)
         assert resp["statusCode"] == 200
-        mock_ensure.assert_not_called()
+        mock_ensure.assert_called_once_with(
+            self._OPP_ID,
+            "new",
+            opportunity=mock_opp.return_value,
+            booked_move_date=None,
+            request_logs=mock_audit.call_args.kwargs["request_logs"],
+        )
