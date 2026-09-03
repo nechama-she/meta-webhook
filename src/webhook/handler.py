@@ -96,13 +96,12 @@ def lambda_handler(event, context):
             if event_type == "follow-up-deleted":
                 handle_followup_deleted(body)
                 return {"statusCode": 200, "body": "OK"}
-            if event_type == "opportunity-changed":
+            if event_type in ("opportunity-changed", "sales-person-changed"):
                 handle_opportunity_changed(body)
                 return {"statusCode": 200, "body": "OK"}
             if event_type == "opportunity-deleted":
                 handle_opportunity_deleted(body)
                 return {"statusCode": 200, "body": "OK"}
-
             # Meta (Facebook/Instagram) events must carry a valid app-signed signature.
             if not _verify_meta_signature(event, raw_bytes):
                 headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}

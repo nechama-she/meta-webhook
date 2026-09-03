@@ -1922,6 +1922,26 @@ class TestSmartMovingFollowup:
         assert resp["statusCode"] == 200
         mock_delete.assert_called_once()
 
+    @patch("handler.handle_opportunity_changed")
+    def test_handler_routes_explicit_sales_person_changed(self, mock_assignment):
+        from handler import lambda_handler
+
+        event = {
+            "requestContext": {"http": {"method": "POST"}},
+            "body": json.dumps({
+                "event-type": "sales-person-changed",
+                "opportunity-id": "op1",
+                "rep-name": "Devin K",
+            }),
+        }
+        resp = lambda_handler(event, None)
+        assert resp["statusCode"] == 200
+        mock_assignment.assert_called_once_with({
+            "event-type": "sales-person-changed",
+            "opportunity-id": "op1",
+            "rep-name": "Devin K",
+        })
+
 
 class TestOpportunityChanged:
 
@@ -1996,6 +2016,28 @@ class TestOpportunityChanged:
 
         mock_sync.assert_called_once()
         mock_delete.assert_called_once_with(self._OPP_ID)
+
+    @patch("services.smartmoving_service._handle_sales_person_assignment")
+    @patch("services.smartmoving_service._sync_opportunity_to_crm", return_value=True)
+    @patch("services.smartmoving_service.get_audit_activity")
+    def test_explicit_sales_person_change_skips_audit(
+        self, mock_audit, mock_sync, mock_assignment
+    ):
+        from services.smartmoving_service import handle_opportunity_changed
+
+        handle_opportunity_changed({
+            "event-type": "sales-person-changed",
+            "opportunity-id": self._OPP_ID,
+            "rep-name": "Devin K",
+        })
+
+        mock_audit.assert_not_called()
+        mock_sync.assert_called_once_with(
+            self._OPP_ID,
+            audit_activities=[{"description": "Sales person changed to Devin K."}],
+            request_logs=[],
+        )
+        mock_assignment.assert_called_once_with(self._OPP_ID, "Devin K")
 
     @patch("services.smartmoving_service.patch_lead", return_value=True)
     @patch("services.smartmoving_service.get_lead_by_smartmoving_id")
