@@ -587,8 +587,19 @@ def handle_opportunity_changed(body: dict) -> None:
         return
 
     request_logs: list[dict] = []
-    activities = get_audit_activity(opportunity_id, request_logs=request_logs)
-    print(f"Audit activity response for {opportunity_id}: {activities!r}")
+    if body.get("event-type") == "sales-person-changed":
+        rep_name = str(body.get("rep-name") or "").strip()
+        if not rep_name:
+            print("Sales-person-changed event skipped: rep-name is required")
+            return
+        activities = [{"description": f"Sales person changed to {rep_name}."}]
+        print(
+            "Audit activity skipped for explicit sales-person change: "
+            f"opportunity_id={opportunity_id} rep_name={rep_name!r}"
+        )
+    else:
+        activities = get_audit_activity(opportunity_id, request_logs=request_logs)
+        print(f"Audit activity response for {opportunity_id}: {activities!r}")
     latest = activities[0] if activities else {}
     description = latest.get("description", "") if isinstance(latest, dict) else ""
 
