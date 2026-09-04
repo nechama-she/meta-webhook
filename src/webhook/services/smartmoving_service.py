@@ -514,6 +514,8 @@ def _ensure_lead_exists(
         "status": status,
         "source": "SmartMoving",
     }
+    if opp.get("createdAtUtc"):
+        lead_data["smartmoving_created_time"] = opp["createdAtUtc"]
     if status in _BOOKED_DATE_STATUSES and booked_move_date:
         lead_data["booked_move_date"] = booked_move_date
 

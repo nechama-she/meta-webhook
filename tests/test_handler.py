@@ -557,6 +557,42 @@ class TestLeadPipeline:
         assert payload["status"] == "booked"
         assert payload["booked_move_date"] == "2026-07-27"
 
+    @patch("pipeline.actions.send_to_moving_crm.urllib.request.urlopen")
+    def test_smartmoving_created_time_is_sent_unchanged(self, mock_urlopen):
+        response = MagicMock()
+        response.status = 201
+        response.read.return_value = b'{"id":"crm-1"}'
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        import pipeline.actions.send_to_moving_crm as moving_crm_action
+
+        created_at = "2026-08-26T23:07:42.8417003+00:00"
+        with patch.object(moving_crm_action, "_CRM_URL", "https://crm.example/api/leads"):
+            moving_crm_action.send_to_moving_crm({
+                "full_name": "Sally Hale",
+                "smartmoving_created_time": created_at,
+            })
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        assert payload["smartmoving_created_time"] == created_at
+
+    @patch("pipeline.actions.send_to_moving_crm.urllib.request.urlopen")
+    def test_missing_smartmoving_created_time_is_omitted(self, mock_urlopen):
+        response = MagicMock()
+        response.status = 201
+        response.read.return_value = b'{"id":"crm-1"}'
+        mock_urlopen.return_value.__enter__.return_value = response
+
+        import pipeline.actions.send_to_moving_crm as moving_crm_action
+
+        with patch.object(moving_crm_action, "_CRM_URL", "https://crm.example/api/leads"):
+            moving_crm_action.send_to_moving_crm({"full_name": "Sally Hale"})
+
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data.decode("utf-8"))
+        assert "smartmoving_created_time" not in payload
+
     @patch("pipeline.actions.log_to_borat_sheet.append_row", return_value=True)
     @patch("pipeline.actions.send_to_granot.send_lead", return_value="OK")
     def test_branch_sets_flag_on_data(self, mock_hm, mock_sheet):
