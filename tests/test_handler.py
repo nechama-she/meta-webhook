@@ -2449,3 +2449,91 @@ class TestOpportunityChanged:
             booked_move_date=None,
             request_logs=mock_audit.call_args.kwargs["request_logs"],
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  BoxBot website chat
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestWebsiteChat:
+    BODY = {
+        "event-type": "website-chat-message",
+        "user_id": "web-abc123",
+        "message_id": "m-1",
+        "role": "user",
+        "text": "Hi, I'm moving a 2 bedroom",
+        "timestamp": 1730000000000,
+        "page_id": "gorillahaulers.com",
+        "lead_id": "lead-9",
+    }
+
+    @staticmethod
+    def _post(body: dict, secret: str | None = "site-secret", signature: str | None = None) -> dict:
+        raw = json.dumps(body)
+        headers = {"Content-Type": "application/json"}
+        if signature is not None:
+            headers["X-BoxBot-Signature-256"] = signature
+        elif secret is not None:
+            digest = hmac.new(secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+            headers["X-BoxBot-Signature-256"] = "sha256=" + digest
+        return {"requestContext": {"http": {"method": "POST"}}, "headers": headers, "body": raw}
+
+    @pytest.fixture(autouse=True)
+    def _env(self):
+        with patch.dict(os.environ, {**ENV_VARS, "WEBSITE_CHAT_SECRET": "site-secret"}):
+            from handler import lambda_handler
+            self.handler = lambda_handler
+            yield
+
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_saves_like_messenger_with_website_platform(self, mock_save):
+        resp = self.handler(self._post(self.BODY), None)
+        assert resp["statusCode"] == 200
+        mock_save.assert_called_once_with(
+            user_id="web-abc123", message_id="m-1", text="Hi, I'm moving a 2 bedroom",
+            platform="website_gorillah_bot", page_id="gorillahaulers.com",
+            timestamp=1730000000000, role="user", lead_id="lead-9",
+        )
+
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_no_lead_yet(self, mock_save):
+        body = {k: v for k, v in self.BODY.items() if k != "lead_id"}
+        assert self.handler(self._post(body), None)["statusCode"] == 200
+        assert mock_save.call_args.kwargs["lead_id"] is None
+
+    @pytest.mark.parametrize("secret,signature", [
+        (None, None), ("wrong-secret", None), (None, "site-secret"), (None, "sha256=deadbeef"),
+    ])
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_bad_signature_is_rejected(self, mock_save, secret, signature):
+        assert self.handler(self._post(self.BODY, secret, signature), None)["statusCode"] == 403
+        mock_save.assert_not_called()
+
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_signature_covers_the_body(self, mock_save):
+        event = self._post(self.BODY)
+        event["body"] = event["body"].replace("2 bedroom", "5 bedroom")
+        assert self.handler(event, None)["statusCode"] == 403
+        mock_save.assert_not_called()
+
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_rejected_when_lambda_has_no_secret(self, mock_save):
+        with patch.dict(os.environ, {"WEBSITE_CHAT_SECRET": ""}):
+            assert self.handler(self._post(self.BODY, ""), None)["statusCode"] == 403
+        mock_save.assert_not_called()
+
+    @pytest.mark.parametrize("change", [
+        {"user_id": "1234567890"}, {"role": "sales"}, {"text": "  "}, {"message_id": ""}, {"timestamp": "soon"},
+    ])
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_invalid_payload_is_rejected(self, mock_save, change):
+        assert self.handler(self._post({**self.BODY, **change}), None)["statusCode"] == 400
+        mock_save.assert_not_called()
+
+    @patch("db.client._conversations_table")
+    def test_lead_id_is_stored_on_the_item(self, mock_table):
+        from db.client import save_conversation_message
+        save_conversation_message(user_id="web-a", message_id="m", text="t", platform="website_gorillah_bot",
+                                  page_id="gorillahaulers.com", timestamp=1, role="assistant", lead_id="lead-9")
+        item = mock_table.put_item.call_args.kwargs["Item"]
+        assert item["lead_id"] == "lead-9" and item["platform"] == "website_gorillah_bot" and item["record_type"] == "message"
