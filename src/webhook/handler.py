@@ -16,6 +16,7 @@ from services.smartmoving_service import (
     handle_opportunity_changed,
     handle_opportunity_deleted,
 )
+from services.website_chat_service import handle_website_chat_message
 
 VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
 APP_SECRET = os.environ.get("APP_SECRET", "")
@@ -90,6 +91,9 @@ def lambda_handler(event, context):
 
             # SmartMoving events have "event-type"
             event_type = body.get("event-type")
+            # BoxBot's website chat (signed with its own X-BoxBot-Signature-256 header)
+            if event_type == "website-chat-message":
+                return handle_website_chat_message(body, event.get("headers") or {}, raw_bytes)
             if event_type in ("follow-up-created", "follow-up-changed", "follow-up-completed"):
                 handle_followup_created(body)
                 return {"statusCode": 200, "body": "OK"}
