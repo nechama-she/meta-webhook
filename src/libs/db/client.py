@@ -273,6 +273,7 @@ def save_conversation_message(
     role: str,
     sales_name: str | None = None,
     attachments: list[dict] | None = None,
+    lead_id: str | None = None,
 ) -> None:
     """Persist a single conversation message."""
     item: dict = {
@@ -289,6 +290,8 @@ def save_conversation_message(
         item["sales_name"] = sales_name
     if attachments:
         item["attachments"] = attachments
+    if lead_id:
+        item["lead_id"] = lead_id
     try:
         print(
             "Conversation save attempt: "

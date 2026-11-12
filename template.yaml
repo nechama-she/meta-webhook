@@ -102,6 +102,7 @@ Resources:
           MOVING_CRM_ADMIN_EMAIL: 'admin@gorillamove.com'
           MOVING_CRM_ADMIN_PASSWORD_PARAM: '/meta-webhook/MOVINGCRM_ADMIN_PASSWORD'
           CHAT_API_URL: '{{resolve:ssm:/meta-webhook/CHAT_API_URL}}'
+          WEBSITE_CHAT_SECRET: '{{resolve:ssm:/meta-webhook/WEBSITE_CHAT_SECRET}}'
           CHAT_API_KEY: !If
             - IsProd
             - '{{resolve:ssm:/meta-webhook/CHAT_API_KEY}}'
