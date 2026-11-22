@@ -1,4 +1,4 @@
-"""Website chat messages from BoxBot (the gorillahaulers.com chat window)."""
+"""Chat messages from BoxBot: the gorillahaulers.com chat window and the CRM customer page assistant."""
 
 import hashlib
 import hmac
@@ -7,6 +7,13 @@ import os
 from db import save_conversation_message
 
 PLATFORM = "website_gorillah_bot"
+CUSTOMER_PAGE_PLATFORM = "customer_page_bot"
+# event-type -> (platform saved, user id prefix): "web-<visitor>" on the website,
+# "cp-<access id>" (customer) or "cp-rep-<access id>" (rep) on the customer page.
+SOURCES = {
+    "website-chat-message": (PLATFORM, "web-"),
+    "customer-page-chat-message": (CUSTOMER_PAGE_PLATFORM, "cp-"),
+}
 ROLES = {"user", "assistant"}
 
 
@@ -25,8 +32,10 @@ def _signed(headers: dict, raw_bytes: bytes) -> bool:
     return hmac.compare_digest(expected, sig.split("=", 1)[1])
 
 
-def handle_website_chat_message(body: dict, headers: dict, raw_bytes: bytes) -> dict:
-    """Save one website chat message like a Messenger message, with platform website_gorillah_bot."""
+def handle_website_chat_message(body: dict, headers: dict, raw_bytes: bytes,
+                                event_type: str = "website-chat-message") -> dict:
+    """Save one BoxBot chat message like a Messenger message, with the platform of its event type."""
+    platform, prefix = SOURCES[event_type]
     if not _signed(headers, raw_bytes):
         print("Website chat message rejected: bad signature")
         return {"statusCode": 403, "body": "Forbidden"}
@@ -39,7 +48,7 @@ def handle_website_chat_message(body: dict, headers: dict, raw_bytes: bytes) -> 
         timestamp = int(body.get("timestamp"))
     except (TypeError, ValueError):
         timestamp = 0
-    if not user_id.startswith("web-") or not message_id or role not in ROLES or not text or timestamp <= 0:
+    if not user_id.startswith(prefix) or not message_id or role not in ROLES or not text or timestamp <= 0:
         print(f"Website chat message rejected: invalid payload user_id={user_id!r} role={role!r}")
         return {"statusCode": 400, "body": "Bad Request"}
 
@@ -47,7 +56,7 @@ def handle_website_chat_message(body: dict, headers: dict, raw_bytes: bytes) -> 
         user_id=user_id,
         message_id=message_id,
         text=text,
-        platform=PLATFORM,
+        platform=platform,
         page_id=str(body.get("page_id") or "").strip(),
         timestamp=timestamp,
         role=role,

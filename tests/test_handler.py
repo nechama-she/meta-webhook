@@ -2537,3 +2537,32 @@ class TestWebsiteChat:
                                   page_id="gorillahaulers.com", timestamp=1, role="assistant", lead_id="lead-9")
         item = mock_table.put_item.call_args.kwargs["Item"]
         assert item["lead_id"] == "lead-9" and item["platform"] == "website_gorillah_bot" and item["record_type"] == "message"
+
+    # The CRM customer page assistant: same signature, its own platform and user ids.
+    CUSTOMER_PAGE = {**BODY, "event-type": "customer-page-chat-message", "user_id": "cp-11111111-2222",
+                     "page_id": "Gorilla Haulers"}
+
+    @pytest.mark.parametrize("user_id", ["cp-11111111-2222", "cp-rep-11111111-2222"])
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_customer_page_saves_with_its_own_platform(self, mock_save, user_id):
+        resp = self.handler(self._post({**self.CUSTOMER_PAGE, "user_id": user_id}), None)
+        assert resp["statusCode"] == 200
+        mock_save.assert_called_once_with(
+            user_id=user_id, message_id="m-1", text="Hi, I'm moving a 2 bedroom",
+            platform="customer_page_bot", page_id="Gorilla Haulers",
+            timestamp=1730000000000, role="user", lead_id="lead-9",
+        )
+
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_customer_page_needs_the_signature(self, mock_save):
+        assert self.handler(self._post(self.CUSTOMER_PAGE, "wrong-secret"), None)["statusCode"] == 403
+        mock_save.assert_not_called()
+
+    @pytest.mark.parametrize("body", [
+        {"event-type": "customer-page-chat-message", "user_id": "web-abc123"},
+        {"event-type": "website-chat-message", "user_id": "cp-11111111-2222"},
+    ])
+    @patch("services.website_chat_service.save_conversation_message")
+    def test_a_user_id_from_the_other_bot_is_rejected(self, mock_save, body):
+        assert self.handler(self._post({**self.BODY, **body}), None)["statusCode"] == 400
+        mock_save.assert_not_called()

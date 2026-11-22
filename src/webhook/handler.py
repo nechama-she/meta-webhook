@@ -91,9 +91,9 @@ def lambda_handler(event, context):
 
             # SmartMoving events have "event-type"
             event_type = body.get("event-type")
-            # BoxBot's website chat (signed with its own X-BoxBot-Signature-256 header)
-            if event_type == "website-chat-message":
-                return handle_website_chat_message(body, event.get("headers") or {}, raw_bytes)
+            # BoxBot's website chat and customer page assistant (signed with its own X-BoxBot-Signature-256 header)
+            if event_type in ("website-chat-message", "customer-page-chat-message"):
+                return handle_website_chat_message(body, event.get("headers") or {}, raw_bytes, event_type)
             if event_type in ("follow-up-created", "follow-up-changed", "follow-up-completed"):
                 handle_followup_created(body)
                 return {"statusCode": 200, "body": "OK"}
