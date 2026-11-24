@@ -2007,10 +2007,12 @@ class TestOpportunityChanged:
         event["body"] = json.dumps(payload)
         return event
 
+    @patch("services.smartmoving_service.get_opportunity_result",
+           return_value=(None, 404, "The specified opportunity was not found."))
     @patch("services.smartmoving_service.delete_lead_by_smartmoving", return_value=True)
     @patch("services.smartmoving_service.cache_set")
     def test_deleted_event_saves_permanent_tombstone_then_deletes(
-        self, mock_cache_set, mock_delete
+        self, mock_cache_set, mock_delete, _mock_lookup
     ):
         from services.smartmoving_service import handle_opportunity_deleted
 
@@ -2023,6 +2025,59 @@ class TestOpportunityChanged:
             f"smartmoving:opportunity-deleted:{self._OPP_ID}", "1"
         )
         mock_delete.assert_called_once_with(self._OPP_ID)
+
+    # The webhook URL is public and SmartMoving signs nothing: a forged delete must not remove a live lead.
+    @patch("services.smartmoving_service.get_opportunity_result", return_value=({"id": "x"}, 200, None))
+    @patch("services.smartmoving_service.delete_lead_by_smartmoving", return_value=True)
+    @patch("services.smartmoving_service.cache_set")
+    def test_deleted_event_for_a_live_opportunity_is_ignored(self, mock_cache_set, mock_delete, _mock_lookup):
+        from services.smartmoving_service import handle_opportunity_deleted
+
+        handle_opportunity_deleted({"event-type": "opportunity-deleted", "opportunity-id": self._OPP_ID})
+
+        mock_cache_set.assert_not_called()
+        mock_delete.assert_not_called()
+
+    @patch("services.smartmoving_service.get_opportunity_result", return_value=(None, None, "timed out"))
+    @patch("services.smartmoving_service.delete_lead_by_smartmoving", return_value=True)
+    @patch("services.smartmoving_service.cache_set")
+    def test_deleted_event_still_deletes_when_smartmoving_does_not_answer(self, mock_cache_set, mock_delete, _m):
+        from services.smartmoving_service import handle_opportunity_deleted
+
+        handle_opportunity_deleted({"event-type": "opportunity-deleted", "opportunity-id": self._OPP_ID})
+
+        mock_cache_set.assert_called_once()
+        mock_delete.assert_called_once_with(self._OPP_ID)
+
+    @patch("services.smartmoving_service.get_followups", return_value=[{"id": "fu-1"}, {"id": "fu-2"}])
+    @patch("services.smartmoving_service.delete_followup")
+    def test_followup_delete_ignored_while_smartmoving_still_has_it(self, mock_delete, _mock_list):
+        from services.smartmoving_service import handle_followup_deleted
+
+        handle_followup_deleted({"event-type": "follow-up-deleted", "followup-id": "fu-2",
+                                 "opportunity-id": self._OPP_ID})
+
+        mock_delete.assert_not_called()
+
+    @patch("services.smartmoving_service.get_followups", return_value=[{"id": "fu-1"}])
+    @patch("services.smartmoving_service.delete_followup")
+    def test_followup_delete_goes_through_when_it_is_gone(self, mock_delete, _mock_list):
+        from services.smartmoving_service import handle_followup_deleted
+
+        handle_followup_deleted({"event-type": "follow-up-deleted", "followup-id": "fu-2",
+                                 "opportunity-id": self._OPP_ID})
+
+        mock_delete.assert_called_once_with("fu-2")
+
+    @patch("services.smartmoving_service.get_followups")
+    @patch("services.smartmoving_service.delete_followup")
+    def test_followup_delete_without_opportunity_works_as_before(self, mock_delete, mock_list):
+        from services.smartmoving_service import handle_followup_deleted
+
+        handle_followup_deleted({"event-type": "follow-up-deleted", "followup-id": "fu-2"})
+
+        mock_list.assert_not_called()
+        mock_delete.assert_called_once_with("fu-2")
 
     @patch("services.smartmoving_service.get_audit_activity")
     def test_changed_event_is_ignored_after_tombstone(self, mock_audit):

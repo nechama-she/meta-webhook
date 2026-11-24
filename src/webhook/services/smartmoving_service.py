@@ -546,6 +546,16 @@ def handle_followup_deleted(body: dict) -> None:
     if not followup_id:
         print("Missing followup-id in SmartMoving delete event")
         return
+    # The webhook URL is public and SmartMoving signs nothing: when SmartMoving itself still lists this
+    # follow-up, the event is not a real delete and nothing is removed. Otherwise (gone, no opportunity id,
+    # or SmartMoving not answering) it is deleted exactly as before.
+    opportunity_id = body.get("opportunity-id")
+    if opportunity_id:
+        followups = get_followups(opportunity_id)
+        if followups and any(str(f.get("id")) == str(followup_id) for f in followups if isinstance(f, dict)):
+            print(f"Follow-up delete ignored: SmartMoving still has followup_id={followup_id} "
+                  f"(opportunity_id={opportunity_id})")
+            return
 
     delete_followup(followup_id)
 
@@ -558,11 +568,27 @@ def _is_opportunity_deleted(opportunity_id: str) -> bool:
     return cache_get(_opportunity_deleted_key(opportunity_id)) == "1"
 
 
+def _opportunity_still_exists(opportunity_id: str) -> bool:
+    """SmartMoving answers 200 for this opportunity: it was not deleted. Any other answer (not found, an
+    error, no answer) is False, so a real delete goes through exactly as before."""
+    try:
+        _, status_code, _ = get_opportunity_result(opportunity_id)
+    except Exception as exc:
+        print(f"Opportunity existence check failed: opportunity_id={opportunity_id} error={exc!r}")
+        return False
+    return status_code == 200
+
+
 def handle_opportunity_deleted(body: dict) -> None:
     """Permanently tombstone and delete a SmartMoving opportunity's CRM lead."""
     opportunity_id = body.get("opportunity-id")
     if not opportunity_id:
         print("Opportunity delete skipped: missing opportunity-id")
+        return
+    # The webhook URL is public and SmartMoving signs nothing: a delete event for an opportunity SmartMoving
+    # still has is not real, and acting on it would remove a live lead and block its future syncs.
+    if _opportunity_still_exists(opportunity_id):
+        print(f"Opportunity delete ignored: SmartMoving still has opportunity_id={opportunity_id}")
         return
 
     cache_set(_opportunity_deleted_key(opportunity_id), "1")
